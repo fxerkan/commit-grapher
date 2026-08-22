@@ -31,7 +31,7 @@ class AccountIn(BaseModel):
 def list_accounts():
     conn = db.connect()
     rows = conn.execute(
-        "SELECT id, provider, username, owner_url, last_synced_at FROM accounts ORDER BY id"
+        "SELECT id, provider, username, display_name, owner_url, last_synced_at FROM accounts ORDER BY id"
     ).fetchall()
     conn.close()
     return [dict(r) for r in rows]
@@ -115,12 +115,16 @@ def oauth_poll(body: OAuthPoll):
 
 @router.get("/graph")
 def get_graph(provider: str | None = None, repo_id: int | None = None, authors: str | None = None,
-              repo_ids: str | None = None, projects: str | None = None):
+              repo_ids: str | None = None, projects: str | None = None,
+              organizations: str | None = None, account_ids: str | None = None):
     author_list = [a for a in (authors.split("||") if authors else []) if a]
     rid_list = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
     proj_list = [p for p in (projects.split("||") if projects else []) if p]
+    org_list = [o for o in (organizations.split("||") if organizations else []) if o]
+    acc_list = [int(x) for x in account_ids.split(",") if x] if account_ids else None
     return graph.build(provider=provider, focus_repo=repo_id, authors=author_list,
-                       repo_ids=rid_list, projects=proj_list or None)
+                       repo_ids=rid_list, projects=proj_list or None,
+                       organizations=org_list or None, account_ids=acc_list)
 
 
 @router.get("/heatmap")
@@ -134,8 +138,12 @@ def get_gitgraph(repo_id: int, limit: int = 200):
 
 
 @router.get("/charts")
-def get_charts(provider: str | None = None, repo_id: int | None = None, author: str | None = None):
-    return charts.stats(provider, repo_id, author)
+def get_charts(providers: str | None = None, repo_ids: str | None = None,
+               authors: str | None = None, start: str | None = None, end: str | None = None):
+    plist = [p for p in (providers.split(",") if providers else []) if p]
+    rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
+    alist = [a for a in (authors.split("||") if authors else []) if a]
+    return charts.stats(plist or None, rids, alist or None, start, end)
 
 
 @router.get("/export")
@@ -162,40 +170,68 @@ _BOT = _re.compile(r"\[bot\]|bot$|claude|codex|copilot|dependabot|renovate|githu
 
 
 @router.get("/facets")
-def get_facets(provider: str | None = None, projects: str | None = None, repo_ids: str | None = None):
-    """Sidebar filter values. When provider/projects/repo_ids are given, the repos, branches
-    and authors cascade (parent-child): pick a project -> only its repos/branches/authors show."""
+def get_facets(provider: str | None = None, projects: str | None = None, repo_ids: str | None = None,
+               organizations: str | None = None, account_ids: str | None = None):
+    """Sidebar filter values. When provider/organization/workspace/repo are given, the repos,
+    branches, PRs and authors cascade (parent-child) to only what's in scope."""
     conn = db.connect()
     proj_sel = [p for p in (projects.split("||") if projects else []) if p]
     rid_sel = {int(x) for x in repo_ids.split(",") if x} if repo_ids else None
+    org_sel = {o for o in (organizations.split("||") if organizations else []) if o}
+    acc_sel = {int(x) for x in account_ids.split(",") if x} if account_ids else None
 
+    accounts = [dict(a) for a in conn.execute("SELECT id, provider, username, display_name FROM accounts ORDER BY username")]
+    acc_by_id = {a["id"]: a for a in accounts}
     providers = [r["provider"] for r in conn.execute("SELECT DISTINCT provider FROM repos ORDER BY provider")]
-    all_repos, projects_map = [], {}
-    for r in conn.execute("SELECT id, full_name, provider FROM repos ORDER BY full_name"):
+
+    all_repos, projects_map, orgs_map = [], {}, {}
+    for r in conn.execute("SELECT id, account_id, full_name, provider FROM repos ORDER BY full_name"):
         proj = r["full_name"].split("/", 1)[0] if "/" in r["full_name"] else r["full_name"]
         short = r["full_name"].split("/", 1)[1] if "/" in r["full_name"] else r["full_name"]
-        projects_map[proj] = r["provider"]
-        all_repos.append({"id": r["id"], "full_name": r["full_name"], "provider": r["provider"], "project": proj, "repo": short})
+        acc = acc_by_id.get(r["account_id"], {})
+        org = acc.get("username") if r["provider"] == "azure" else proj  # azure org / github owner
+        projects_map[proj] = r["provider"]; orgs_map[org] = r["provider"]
+        all_repos.append({"id": r["id"], "account_id": r["account_id"], "full_name": r["full_name"],
+                          "provider": r["provider"], "project": proj, "repo": short, "organization": org})
 
-    # Cascade: repos in scope drive branches/authors.
-    scoped = [r for r in all_repos
-              if (not provider or r["provider"] == provider)
-              and (not proj_sel or r["project"] in set(proj_sel))
-              and (rid_sel is None or r["id"] in rid_sel)]
-    scoped_ids = {r["id"] for r in scoped}
+    def in_scope(r, use_repo_ids=True):
+        return ((not provider or r["provider"] == provider)
+                and (not org_sel or r["organization"] in org_sel)
+                and (not proj_sel or r["project"] in set(proj_sel))
+                and (not acc_sel or r["account_id"] in acc_sel)
+                and (not use_repo_ids or rid_sel is None or r["id"] in rid_sel))
+
+    scoped_ids = [r["id"] for r in all_repos if in_scope(r)]
     ph = ",".join("?" * len(scoped_ids)) or "NULL"
-    ids = list(scoped_ids)
     branches = [{"name": r["name"], "repo_id": r["repo_id"], "count": r["n"]} for r in conn.execute(
-        f"SELECT name, repo_id, COUNT(*) n FROM branches WHERE repo_id IN ({ph}) GROUP BY name ORDER BY n DESC", ids)]
+        f"SELECT name, repo_id, COUNT(*) n FROM branches WHERE repo_id IN ({ph}) GROUP BY name ORDER BY n DESC", scoped_ids)]
+    prs = [{"id": r["id"], "number": r["number"], "title": r["title"], "repo_id": r["repo_id"]} for r in conn.execute(
+        f"SELECT id, number, title, repo_id FROM pull_requests WHERE repo_id IN ({ph}) ORDER BY number DESC LIMIT 1000", scoped_ids)]
     authors = [{"name": r["author"], "count": r["n"], "bot": bool(_BOT.search(r["author"]))} for r in conn.execute(
         f"SELECT author, COUNT(*) n FROM commits WHERE author IS NOT NULL AND repo_id IN ({ph}) "
-        "GROUP BY author ORDER BY n DESC", ids)]
-    account_names = [r["username"] for r in conn.execute("SELECT username FROM accounts")]
+        "GROUP BY author ORDER BY n DESC", scoped_ids)]
     conn.close()
     return {"providers": providers,
+            "organizations": [{"name": k, "provider": v} for k, v in sorted(orgs_map.items())],
             "projects": [{"name": k, "provider": v} for k, v in sorted(projects_map.items())],
-            "repos": [r for r in all_repos if (not provider or r["provider"] == provider) and (not proj_sel or r["project"] in set(proj_sel))],
-            "branches": branches, "authors": authors, "account_names": account_names}
+            "repos": [r for r in all_repos if in_scope(r, use_repo_ids=False)],
+            "branches": branches, "prs": prs, "authors": authors,
+            "accounts": [{"id": a["id"], "provider": a["provider"], "username": a["username"],
+                          "display_name": a["display_name"] or a["username"]} for a in accounts],
+            "account_names": [a["username"] for a in accounts]}
+
+
+class RenameIn(BaseModel):
+    display_name: str
+
+
+@router.patch("/accounts/{account_id}")
+def rename_account(account_id: int, body: RenameIn):
+    conn = db.connect()
+    conn.execute("UPDATE accounts SET display_name=? WHERE id=?", (body.display_name.strip() or None, account_id))
+    conn.commit()
+    conn.close()
+    return {"ok": True}
 
 
 @router.get("/summary")

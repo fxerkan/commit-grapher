@@ -40,6 +40,10 @@ export default function Accounts() {
 
   const del = async (id: number) => { await api.deleteAccount(id); await load(); };
 
+  const [editId, setEditId] = useState<number | null>(null);
+  const [editVal, setEditVal] = useState("");
+  const saveName = async (id: number) => { await api.renameAccount(id, editVal.trim()); setEditId(null); await load(); };
+
   // GitHub OAuth device flow (no PAT needed; pulls private repos with the 'repo' scope).
   const [clientId, setClientId] = useState(localStorage.getItem("gh_client_id") || "");
   const [device, setDevice] = useState<{ user_code: string; verification_uri: string; device_code: string; interval: number } | null>(null);
@@ -131,8 +135,21 @@ export default function Accounts() {
       {accounts.map((a) => (
         <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #21262d" }}>
           <span style={{ flex: 1 }}>
-            <b>{a.username}</b> <span style={{ color: "#8b949e" }}>({a.provider})</span>
-            {a.last_synced_at && <span style={{ color: "#8b949e", marginLeft: 8, fontSize: 12 }}>synced {a.last_synced_at.slice(0, 10)}</span>}
+            {editId === a.id ? (
+              <span style={{ display: "inline-flex", gap: 6 }}>
+                <input autoFocus style={{ ...input, padding: "4px 8px" }} value={editVal} placeholder={a.username}
+                  onChange={(e) => setEditVal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName(a.id)} />
+                <button onClick={() => saveName(a.id)} style={{ ...input, padding: "4px 10px", cursor: "pointer", color: "var(--accent)" }}>save</button>
+                <button onClick={() => setEditId(null)} style={{ ...input, padding: "4px 10px", cursor: "pointer", color: "var(--muted)" }}>✕</button>
+              </span>
+            ) : (
+              <>
+                <b>{a.display_name || a.username}</b> <span style={{ color: "#8b949e" }}>({a.provider})</span>
+                <button title="rename" onClick={() => { setEditId(a.id); setEditVal(a.display_name || ""); }}
+                  style={{ marginLeft: 6, background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer" }}>✎</button>
+                {a.last_synced_at && <span style={{ color: "#8b949e", marginLeft: 8, fontSize: 12 }}>synced {a.last_synced_at.slice(0, 10)}</span>}
+              </>
+            )}
           </span>
           <button disabled={busy === `sync${a.id}`} onClick={() => sync(a.id)}
             style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #30363d", background: "#1f6feb", color: "#fff", cursor: "pointer" }}>

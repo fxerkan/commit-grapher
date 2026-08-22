@@ -66,7 +66,7 @@ CREATE INDEX IF NOT EXISTS idx_commits_committed_at ON commits(committed_at);
 """
 
 # Columns added after initial release; ALTER on existing DBs (sqlite has no ADD COLUMN IF NOT EXISTS).
-_MIGRATIONS = {"commits": {"url": "TEXT", "parents": "TEXT"}}
+_MIGRATIONS = {"commits": {"url": "TEXT", "parents": "TEXT"}, "accounts": {"display_name": "TEXT"}}
 
 
 def _migrate(conn: sqlite3.Connection) -> None:

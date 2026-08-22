@@ -1,9 +1,10 @@
 ---
 id: TASK-19
 title: Branch + PR as cascaded sortable/filterable dropdowns
-status: To Do
+status: Done
 assignee: []
 created_date: '2026-08-22 15:48'
+updated_date: '2026-08-22 16:04'
 labels: []
 milestone: m-3
 dependencies: []

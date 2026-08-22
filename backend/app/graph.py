@@ -34,9 +34,15 @@ def _project_of(full_name: str) -> str:
     return full_name.split("/", 1)[0] if "/" in full_name else full_name
 
 
+def _org_of(acc, full_name: str) -> str:
+    # Azure: the DevOps org is the account; GitHub: the repo owner (org or user).
+    return acc["username"] if acc["provider"] == "azure" else _project_of(full_name)
+
+
 def build(provider: str | None = None, focus_repo: int | None = None,
           authors: list[str] | None = None, repo_ids: list[int] | None = None,
-          projects: list[str] | None = None) -> dict:
+          projects: list[str] | None = None, organizations: list[str] | None = None,
+          account_ids: list[int] | None = None) -> dict:
     """provider filters accounts; focus_repo shows ONLY that repo's subgraph (commits expanded);
     authors restricts to repos where those authors committed (and, when focused, to their commits).
     Nodes carry repoId/project (+ author for commits) so the client can filter live."""
@@ -53,7 +59,7 @@ def build(provider: str | None = None, focus_repo: int | None = None,
         author_repo_ids = {r["repo_id"] for r in conn.execute(
             f"SELECT DISTINCT repo_id FROM commits WHERE author IN ({ph})", authors).fetchall()}
 
-    def add_node(key, label, node_type, size, repo_id=None, author=None, project=None):
+    def add_node(key, label, node_type, size, repo_id=None, author=None, project=None, organization=None):
         nonlocal i
         x, y = _scatter(i)
         i += 1
@@ -65,12 +71,17 @@ def build(provider: str | None = None, focus_repo: int | None = None,
             attrs["author"] = author
         if project is not None:
             attrs["project"] = project
+        if organization is not None:
+            attrs["organization"] = organization
         nodes.append({"key": key, "attributes": attrs})
 
     if provider:
         accounts = conn.execute("SELECT * FROM accounts WHERE provider=?", (provider,)).fetchall()
     else:
         accounts = conn.execute("SELECT * FROM accounts").fetchall()
+    if account_ids:
+        accounts = [a for a in accounts if a["id"] in set(account_ids)]
+    org_set = set(organizations) if organizations else None
 
     for acc in accounts:
         if focus_repo is not None:
@@ -87,25 +98,28 @@ def build(provider: str | None = None, focus_repo: int | None = None,
         if projects:
             pset = set(projects)
             repos = [r for r in repos if _project_of(r["full_name"]) in pset]
+        if org_set is not None:
+            repos = [r for r in repos if _org_of(acc, r["full_name"]) in org_set]
         if not repos:
             continue
 
         akey = f"account:{acc['id']}"
-        add_node(akey, f"{acc['username']} ({acc['provider']})", "account", 14)
+        add_node(akey, f"{acc['display_name'] or acc['username']} ({acc['provider']})", "account", 14)
 
         for repo in repos:
             _proj = _project_of(repo["full_name"])
+            _org = _org_of(acc, repo["full_name"])
             rid = repo["id"]
             rkey = f"repo:{rid}"
             ncommits = conn.execute("SELECT COUNT(*) n FROM commits WHERE repo_id=?", (rid,)).fetchone()["n"]
-            add_node(rkey, repo["full_name"], "repo", 6 + math.log1p(ncommits) * 3, repo_id=rid, project=_proj)
+            add_node(rkey, repo["full_name"], "repo", 6 + math.log1p(ncommits) * 3, repo_id=rid, project=_proj, organization=_org)
             edges.append({"key": f"{akey}->{rkey}", "source": akey, "target": rkey})
 
             branch_keys: dict[str, str] = {}
             for br in conn.execute("SELECT * FROM branches WHERE repo_id=?", (rid,)).fetchall():
                 bkey = f"branch:{br['id']}"
                 branch_keys[br["name"]] = bkey
-                add_node(bkey, br["name"], "branch", 3, repo_id=rid, project=_proj)
+                add_node(bkey, br["name"], "branch", 3, repo_id=rid, project=_proj, organization=_org)
                 edges.append({"key": f"{rkey}->{bkey}", "source": rkey, "target": bkey})
 
             for pr in conn.execute("SELECT * FROM pull_requests WHERE repo_id=?", (rid,)).fetchall():

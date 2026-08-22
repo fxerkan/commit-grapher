@@ -86,8 +86,9 @@ function DragControl() {
   return null;
 }
 
-function Controller({ filters, botSet, myNames, dataKey, focus, onFocus, showArrows }: {
-  filters: Filters; botSet: Set<string>; myNames: Set<string>; dataKey: string;
+function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus, onFocus, showArrows }: {
+  filters: Filters; branchSel: Set<string | number>; prSel: Set<string | number>;
+  botSet: Set<string>; myNames: Set<string>; dataKey: string;
   focus: number | null; onFocus: (id: number | null) => void; showArrows: boolean;
 }) {
   const sigma = useSigma();
@@ -114,11 +115,12 @@ function Controller({ filters, botSet, myNames, dataKey, focus, onFocus, showArr
   useEffect(() => {
     const graph = sigma.getGraph();
     const q = filters.search.trim().toLowerCase();
-    const bq = filters.branch.trim().toLowerCase();
-    const match = (data: any) => {
+    // key-aware so branch (by name) and PR (by id from the "pr:<id>" key) selections work
+    const match = (node: string, data: any) => {
       if (!filters.types.has(data.nodeType)) return false;
       if (q && !(data.label || "").toLowerCase().includes(q)) return false;
-      if (bq && data.nodeType === "branch" && !(data.label || "").toLowerCase().includes(bq)) return false;
+      if (branchSel.size && data.nodeType === "branch" && !branchSel.has(data.label)) return false;
+      if (prSel.size && data.nodeType === "pr" && !prSel.has(Number(node.slice(3)))) return false;
       if (data.nodeType === "commit" && filters.humanAI !== "all") {
         const isBot = botSet.has(data.author);
         if (filters.humanAI === "human" && isBot) return false;
@@ -129,7 +131,7 @@ function Controller({ filters, botSet, myNames, dataKey, focus, onFocus, showArr
     const hot = hovered && graph.hasNode(hovered) ? hovered : null;
     setSettings({
       nodeReducer: (node, data) => {
-        if (!match(data)) return { ...data, hidden: true };
+        if (!match(node, data)) return { ...data, hidden: true };
         const mine = myNames.size && data.author && myNames.has(data.author);
         const base = mine ? { ...data, color: "#f0c000" } : data;
         if (hot) {
@@ -141,14 +143,15 @@ function Controller({ filters, botSet, myNames, dataKey, focus, onFocus, showArr
       },
       edgeReducer: (edge, data) => {
         const type = showArrows ? "arrow" : "line";
-        if (!match(graph.getSourceAttributes(edge)) || !match(graph.getTargetAttributes(edge)))
+        const s = graph.source(edge), t = graph.target(edge);
+        if (!match(s, graph.getNodeAttributes(s)) || !match(t, graph.getNodeAttributes(t)))
           return { ...data, hidden: true };
         if (hot) return graph.hasExtremity(edge, hot)
           ? { ...data, type, color: "#1f6feb", size: 2, zIndex: 1 } : { ...data, hidden: true };
         return { ...data, type };
       },
     });
-  }, [hovered, filters, myNames, botSet, showArrows, sigma, setSettings]);
+  }, [hovered, filters, branchSel, prSel, myNames, botSet, showArrows, sigma, setSettings]);
   return null;
 }
 
@@ -170,20 +173,26 @@ export default function GraphView() {
 
   // server-side filters
   const [provider, setProvider] = useState<Set<string | number>>(new Set());
+  const [organizations, setOrganizations] = useState<Set<string | number>>(new Set());
+  const [accountIds, setAccountIds] = useState<Set<string | number>>(new Set());
   const [projects, setProjects] = useState<Set<string | number>>(new Set());
   const [repos, setRepos] = useState<Set<string | number>>(new Set());
   const [authors, setAuthors] = useState<Set<string | number>>(new Set());
-  // client-side filters
+  // client-side filters (branch/PR selections + node types/search/human-AI)
+  const [branchSel, setBranchSel] = useState<Set<string | number>>(new Set());
+  const [prSel, setPrSel] = useState<Set<string | number>>(new Set());
   const [filters, setFilters] = useState<Filters>({ types: new Set(TYPES), search: "", branch: "", humanAI: "all" });
 
-  // Cascading facets: repos/branches/authors narrow to the current provider/project/repo selection.
+  // Cascading facets: org → workspace → repo → branch/PR/author all narrow to the selection.
   useEffect(() => {
     api.facets({
       provider: ([...provider][0] as string) || undefined,
+      organizations: organizations.size ? [...organizations].map(String) : undefined,
+      account_ids: accountIds.size ? [...accountIds].map(Number) : undefined,
       projects: projects.size ? [...projects].map(String) : undefined,
       repo_ids: repos.size ? [...repos].map(Number) : undefined,
     }).then(setFacets).catch(() => {});
-  }, [JSON.stringify([...provider]), JSON.stringify([...projects]), JSON.stringify([...repos])]);
+  }, [JSON.stringify([...provider]), JSON.stringify([...organizations]), JSON.stringify([...accountIds]), JSON.stringify([...projects]), JSON.stringify([...repos])]);
 
   const providerStr = provider.size === 1 ? ([...provider][0] as string) : undefined;  // 1 = filter, 0/all = no filter
   const myNames = useMemo(() => {
@@ -209,11 +218,13 @@ export default function GraphView() {
       authors: effectiveAuthors.length ? effectiveAuthors : undefined,
       repo_ids: repos.size ? [...repos].map(Number) : undefined,
       projects: projects.size ? [...projects].map(String) : undefined,
+      organizations: organizations.size ? [...organizations].map(String) : undefined,
+      account_ids: accountIds.size ? [...accountIds].map(Number) : undefined,
     }).then((d) => { setData(d); setErr(null); }).catch((e) => setErr(e.message)).finally(() => setUpdating(false));
-  }, [providerStr, focus, JSON.stringify(effectiveAuthors), JSON.stringify([...repos]), JSON.stringify([...projects])]);
+  }, [providerStr, focus, JSON.stringify(effectiveAuthors), JSON.stringify([...repos]), JSON.stringify([...projects]), JSON.stringify([...organizations]), JSON.stringify([...accountIds])]);
 
   const botSet = useMemo(() => new Set((facets?.authors || []).filter((a) => a.bot).map((a) => a.name)), [facets]);
-  const dataKey = `${providerStr}|${focus}|${[...repos]}|${[...projects]}|${effectiveAuthors}`;
+  const dataKey = `${providerStr}|${focus}|${[...repos]}|${[...projects]}|${[...organizations]}|${[...accountIds]}|${effectiveAuthors}`;
   const theme = document.documentElement.dataset.theme || "dark";
   const textColor = theme === "light" ? "#1f2328" : "#e6edf3";
   const halo = theme === "light" ? "#ffffffcc" : "#0d1117cc";
@@ -227,20 +238,26 @@ export default function GraphView() {
     edgeProgramClasses: { line: EdgeRectangleProgram, arrow: EdgeArrowProgram },
   }), [textColor, halo, edgeColor]);
 
-  const activeCount = provider.size + projects.size + repos.size + authors.size
-    + (filters.branch ? 1 : 0) + (filters.search ? 1 : 0) + (filters.humanAI !== "all" ? 1 : 0)
+  const activeCount = provider.size + organizations.size + accountIds.size + projects.size + repos.size
+    + authors.size + branchSel.size + prSel.size
+    + (filters.search ? 1 : 0) + (filters.humanAI !== "all" ? 1 : 0)
     + (filters.types.size !== TYPES.length ? 1 : 0) + (onlyMine ? 1 : 0) + (focus != null ? 1 : 0);
 
   const resetAll = () => {
-    setProvider(new Set()); setProjects(new Set()); setRepos(new Set()); setAuthors(new Set());
-    setFocus(null); setOnlyMine(false);
+    setProvider(new Set()); setOrganizations(new Set()); setAccountIds(new Set());
+    setProjects(new Set()); setRepos(new Set()); setAuthors(new Set());
+    setBranchSel(new Set()); setPrSel(new Set()); setFocus(null); setOnlyMine(false);
     setFilters({ types: new Set(TYPES), search: "", branch: "", humanAI: "all" });
   };
 
   const providerOpts = (facets?.providers || []).map((p) => ({ key: p, label: p }));
+  const orgOpts = (facets?.organizations || []).filter((o) => !providerStr || o.provider === providerStr).map((o) => ({ key: o.name, label: o.name }));
+  const accountOpts = (facets?.accounts || []).map((a) => ({ key: a.id, label: `${a.display_name} (${a.provider})` }));
   const projectOpts = (facets?.projects || []).filter((p) => !providerStr || p.provider === providerStr).map((p) => ({ key: p.name, label: p.name }));
-  // Repo dropdown shows just the repo name (project already lives in its own filter).
+  // Repo dropdown shows just the repo name (workspace already lives in its own filter).
   const repoOpts = (facets?.repos || []).map((r) => ({ key: r.id, label: r.repo }));
+  const branchOpts = (facets?.branches || []).map((b) => ({ key: b.name, label: b.name, count: b.count }));
+  const prOpts = (facets?.prs || []).map((p) => ({ key: p.id, label: `#${p.number} ${p.title || ""}`.trim() }));
   const authorOpts = (facets?.authors || []).map((a) => ({
     key: a.name, label: a.name, count: a.count,
     badge: a.bot ? "AI" : undefined, badgeColor: "#8957e5",
@@ -258,8 +275,16 @@ export default function GraphView() {
           </div>
 
           <label style={lbl}>Provider</label>
-          <MultiSelect options={providerOpts} selected={provider} onChange={(s) => { setProvider(s); setProjects(new Set()); setRepos(new Set()); }} placeholder="All providers"
+          <MultiSelect options={providerOpts} selected={provider} onChange={(s) => { setProvider(s); setOrganizations(new Set()); setProjects(new Set()); setRepos(new Set()); }} placeholder="All providers"
             open={openDrop === "provider"} onOpenChange={(o) => setOpenDrop(o ? "provider" : null)} />
+
+          <label style={lbl}>Account</label>
+          <MultiSelect options={accountOpts} selected={accountIds} onChange={(s) => { setAccountIds(s); setOrganizations(new Set()); setProjects(new Set()); setRepos(new Set()); }} placeholder="All accounts"
+            open={openDrop === "account"} onOpenChange={(o) => setOpenDrop(o ? "account" : null)} />
+
+          <label style={lbl}>Organization</label>
+          <MultiSelect options={orgOpts} selected={organizations} onChange={(s) => { setOrganizations(s); setProjects(new Set()); setRepos(new Set()); }} placeholder="All organizations"
+            open={openDrop === "org"} onOpenChange={(o) => setOpenDrop(o ? "org" : null)} />
 
           <label style={lbl}>Workspace</label>
           <MultiSelect options={projectOpts} selected={projects} onChange={(s) => { setProjects(s); setRepos(new Set()); }} placeholder="All workspaces"
@@ -268,6 +293,14 @@ export default function GraphView() {
           <label style={lbl}>Repository</label>
           <MultiSelect options={repoOpts} selected={repos} onChange={setRepos} placeholder="All repositories"
             open={openDrop === "repo"} onOpenChange={(o) => setOpenDrop(o ? "repo" : null)} />
+
+          <label style={lbl}>Branch</label>
+          <MultiSelect options={branchOpts} selected={branchSel} onChange={setBranchSel} placeholder="All branches"
+            open={openDrop === "branch"} onOpenChange={(o) => setOpenDrop(o ? "branch" : null)} />
+
+          <label style={lbl}>Pull request</label>
+          <MultiSelect options={prOpts} selected={prSel} onChange={setPrSel} placeholder="All PRs"
+            open={openDrop === "pr"} onOpenChange={(o) => setOpenDrop(o ? "pr" : null)} />
 
           <label style={lbl}>Author</label>
           <MultiSelect options={authorOpts} selected={authors} onChange={setAuthors} placeholder="All authors"
@@ -289,9 +322,6 @@ export default function GraphView() {
                 style={{ ...box, cursor: "pointer", background: filters.humanAI === k ? "var(--accent)" : "var(--panel)", color: filters.humanAI === k ? "#fff" : "var(--fg)" }}>{k === "ai" ? "AI" : k[0].toUpperCase() + k.slice(1)}</button>
             ))}
           </div>
-
-          <label style={lbl}>Branch name contains</label>
-          <input style={box} placeholder="e.g. feature/…" value={filters.branch} onChange={(e) => setFilters((f) => ({ ...f, branch: e.target.value }))} />
 
           <label style={lbl}>Search any node</label>
           <input style={box} placeholder="repo / PR / commit…" value={filters.search} onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))} />
@@ -338,7 +368,7 @@ export default function GraphView() {
             <SigmaContainer key={theme} style={{ height: "100%", background: "var(--bg)" }} settings={sigmaSettings}>
               <LoadGraph data={data} />
               <DragControl />
-              <Controller filters={filters} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} />
+              <Controller filters={filters} branchSel={branchSel} prSel={prSel} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} />
             </SigmaContainer>
           </ErrorBoundary>
         )}
