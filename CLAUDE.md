@@ -3,8 +3,8 @@
 ## What this is
 
 A **local-first** app that aggregates your commit/contribution history from **all** your
-version-control accounts (GitHub, Azure DevOps, and — in progress — GitLab, Bitbucket,
-Gitea, Codeberg) into one place, and visualizes it as:
+version-control accounts (GitHub, Azure DevOps, GitLab, Bitbucket, Gitea, Codeberg) — plus
+Jira issues matched to your commits/PRs — into one place, and visualizes it as:
 
 1. **A large interactive network graph** (the flagship) — accounts → repos → branches →
    PRs → commits as nodes/edges, Obsidian-style: physics, zoom, drag, hover-to-highlight,
@@ -21,8 +21,10 @@ REST APIs. It **never clones or reads code**. Tokens live in the OS keychain, ne
 
 ```
 backend/  Python 3.13 · FastAPI · stdlib sqlite3 cache · keyring for tokens
-  app/adapter.py   per-provider adapters (GitHubAdapter, AzureDevOpsAdapter) — the ONLY
-                   code that talks to a provider. Normalized dataclasses out.
+  app/adapter.py   per-provider adapters (GitHub, AzureDevOps, GitLab, Bitbucket, Gitea/
+                   Codeberg, Jira) — the ONLY code that talks to a provider. Normalized
+                   dataclasses out. Jira yields work_items only; match.py relates them to git.
+  app/match.py     fuzzy + exact issue-key matching of Jira issues to commits/PRs/branches
   app/crawler.py   account → repos → branches/PRs/commits into SQLite (resilient per-repo)
   app/graph.py     build the network graph (nodes/edges) with server-side filtering
   app/charts.py    heatmap buckets, chart aggregations, git-graph, export/import
