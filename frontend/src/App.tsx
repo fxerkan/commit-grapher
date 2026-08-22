@@ -3,15 +3,15 @@ import { api } from "./api";
 
 const GraphView = lazy(() => import("./views/GraphView"));
 const HeatmapView = lazy(() => import("./views/HeatmapView"));
-const ChartsView = lazy(() => import("./views/ChartsView"));
+const StatsView = lazy(() => import("./views/StatsView"));
 const Accounts = lazy(() => import("./views/Accounts"));
 const Onboarding = lazy(() => import("./views/Onboarding"));
 
-type Tab = "graph" | "heatmap" | "charts" | "accounts";
+type Tab = "graph" | "heatmap" | "stats" | "accounts";
 const TABS: [Tab, string][] = [
   ["graph", "Network Graph"],
   ["heatmap", "Contribution Heatmap"],
-  ["charts", "Charts"],
+  ["stats", "Stats"],
   ["accounts", "Accounts"],
 ];
 
@@ -41,27 +41,23 @@ export default function App() {
 
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", color: "var(--fg)" }}>
-      <header style={{ display: "flex", alignItems: "center", gap: 24, padding: "10px 20px", borderBottom: "1px solid var(--border)" }}>
+      <header style={{ display: "flex", alignItems: "center", gap: 16, padding: "10px 20px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
         <strong style={{ fontSize: 18 }}>
           <span style={{ color: "var(--accent)" }}>❯ commit-graph</span>
           <span style={{ color: "var(--accent2)" }}>er</span>
         </strong>
-        <nav style={{ display: "flex", gap: 8 }}>
+        <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {TABS.map(([id, label]) => (
-            <button key={id} onClick={() => setTab(id)} style={{
-              background: tab === id ? "var(--accent)" : "transparent",
-              color: tab === id ? "#fff" : "var(--muted)",
-              border: "1px solid var(--border)", borderRadius: 6, padding: "6px 12px", cursor: "pointer",
-            }}>{label}</button>
+            <button key={id} onClick={() => setTab(id)}
+              className={tab === id ? "btn btn-active" : "btn"}
+              style={{ padding: "6px 12px", color: tab === id ? "#fff" : "var(--muted)" }}>{label}</button>
           ))}
         </nav>
-        <button onClick={() => setOnboard(true)}
-          style={{ marginLeft: "auto", background: "transparent", color: "var(--muted)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 12px", cursor: "pointer" }}>
+        <button onClick={() => setOnboard(true)} className="btn" style={{ marginLeft: "auto", color: "var(--muted)", padding: "6px 12px" }}>
           ＋ Add account
         </button>
-        <button onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))}
-          title="Toggle theme"
-          style={{ background: "transparent", color: "var(--muted)", border: "1px solid var(--border)", borderRadius: 6, padding: "6px 12px", cursor: "pointer" }}>
+        <button onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))} title="Toggle theme"
+          className="btn" style={{ color: "var(--muted)", padding: "6px 12px" }}>
           {theme === "dark" ? "🌙 Dark" : "☀️ Light"}
         </button>
       </header>
@@ -69,7 +65,7 @@ export default function App() {
         <Suspense fallback={<div style={{ padding: 40 }}>Loading…</div>}>
           {tab === "graph" && <GraphView />}
           {tab === "heatmap" && <HeatmapView />}
-          {tab === "charts" && <ChartsView />}
+          {tab === "stats" && <StatsView />}
           {tab === "accounts" && <Accounts />}
         </Suspense>
       </main>

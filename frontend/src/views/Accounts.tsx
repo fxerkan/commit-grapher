@@ -3,7 +3,7 @@ import { Account, api } from "../api";
 
 const PROVIDERS = ["github", "azure", "gitlab", "bitbucket", "gitea", "codeberg"];
 const input: React.CSSProperties = {
-  padding: "8px 10px", borderRadius: 6, border: "1px solid var(--border)",
+  padding: "8px 10px", borderRadius: 8, border: "1px solid var(--border)",
   background: "var(--panel)", color: "var(--fg)",
 };
 
@@ -101,8 +101,8 @@ export default function Accounts() {
           onChange={(e) => setForm({ ...form, token: e.target.value })} />
         <input style={{ ...input, width: 260 }} placeholder="owner_url (optional; e.g. Azure/Gitea)" value={form.owner_url}
           onChange={(e) => setForm({ ...form, owner_url: e.target.value })} />
-        <button disabled={busy === "add" || !form.username || !form.token} onClick={add}
-          style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "#238636", color: "#fff", cursor: "pointer" }}>
+        <button className="btn btn-primary" disabled={busy === "add" || !form.username || !form.token} onClick={add}
+          style={{ padding: "8px 16px" }}>
           {busy === "add" ? "Adding…" : "Add"}
         </button>
       </div>
@@ -117,13 +117,13 @@ export default function Accounts() {
       <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap" }}>
         <input style={{ ...input, width: 320 }} placeholder="GitHub OAuth App Client ID (Iv1.… / Ov23…)"
           value={clientId} onChange={(e) => setClientId(e.target.value)} />
-        <button disabled={!clientId.trim() || !!device} onClick={oauthLogin}
-          style={{ padding: "8px 16px", borderRadius: 6, border: "none", background: "#6e40c9", color: "#fff", cursor: "pointer" }}>
+        <button className="btn btn-accent2" disabled={!clientId.trim() || !!device} onClick={oauthLogin}
+          style={{ padding: "8px 16px" }}>
           Login with GitHub
         </button>
       </div>
       {device && (
-        <div style={{ marginTop: 12, padding: 12, border: "1px solid #30363d", borderRadius: 8, background: "#161b22" }}>
+        <div className="panel" style={{ marginTop: 12 }}>
           Go to <a href={device.verification_uri} target="_blank" rel="noreferrer" style={{ color: "#58a6ff" }}>{device.verification_uri}</a>{" "}
           and enter code: <code style={{ fontSize: 18, letterSpacing: 2, color: "#39d353" }}>{device.user_code}</code>
           <div style={{ color: "#8b949e", fontSize: 12, marginTop: 4 }}>Waiting for authorization… (this box closes when done)</div>
@@ -133,14 +133,14 @@ export default function Accounts() {
       <h3 style={{ marginTop: 32 }}>Accounts</h3>
       {accounts.length === 0 && <div style={{ color: "#8b949e" }}>None yet.</div>}
       {accounts.map((a) => (
-        <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderBottom: "1px solid #21262d" }}>
+        <div key={a.id} className="panel" style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
           <span style={{ flex: 1 }}>
             {editId === a.id ? (
               <span style={{ display: "inline-flex", gap: 6 }}>
                 <input autoFocus style={{ ...input, padding: "4px 8px" }} value={editVal} placeholder={a.username}
                   onChange={(e) => setEditVal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName(a.id)} />
-                <button onClick={() => saveName(a.id)} style={{ ...input, padding: "4px 10px", cursor: "pointer", color: "var(--accent)" }}>save</button>
-                <button onClick={() => setEditId(null)} style={{ ...input, padding: "4px 10px", cursor: "pointer", color: "var(--muted)" }}>✕</button>
+                <button className="btn" onClick={() => saveName(a.id)} style={{ padding: "4px 10px", color: "var(--accent)" }}>save</button>
+                <button className="btn" onClick={() => setEditId(null)} style={{ padding: "4px 10px", color: "var(--muted)" }}>✕</button>
               </span>
             ) : (
               <>
@@ -151,12 +151,10 @@ export default function Accounts() {
               </>
             )}
           </span>
-          <button disabled={busy === `sync${a.id}`} onClick={() => sync(a.id)}
-            style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #30363d", background: "#1f6feb", color: "#fff", cursor: "pointer" }}>
+          <button className="btn btn-primary" disabled={busy === `sync${a.id}`} onClick={() => sync(a.id)} style={{ padding: "6px 12px" }}>
             {busy === `sync${a.id}` ? "Syncing…" : "Sync"}
           </button>
-          <button onClick={() => del(a.id)}
-            style={{ padding: "6px 12px", borderRadius: 6, border: "1px solid #30363d", background: "transparent", color: "#f85149", cursor: "pointer" }}>
+          <button className="btn btn-danger" onClick={() => del(a.id)} style={{ padding: "6px 12px" }}>
             Delete
           </button>
         </div>

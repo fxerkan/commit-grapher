@@ -1,29 +1,56 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts";
 import { api, CommitRow, Facets } from "../api";
+import { Opt } from "../components/MultiSelect";
+import FilterPanel, { FilterDim } from "../components/FilterPanel";
 import GitGraph from "../components/GitGraph";
 
 const toGit = (c: CommitRow) => ({
   sha: c.sha, parents: (c.parents || "").split(",").filter(Boolean), message: c.message || c.sha,
   author: c.author, url: c.url, committed_at: c.committed_at, branch: c.branch_ref,
 });
-
-const sel: React.CSSProperties = { padding: "6px 10px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--fg)" };
+const S = (arr: Iterable<any>) => new Set(arr);
+const sel: React.CSSProperties = { padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--fg)" };
 
 export default function HeatmapView() {
   const ref = useRef<HTMLDivElement>(null);
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [facets, setFacets] = useState<Facets | null>(null);
   const [err, setErr] = useState<string | null>(null);
-  const [flt, setFlt] = useState<{ provider: string; repo_id: number | null; author: string }>({ provider: "", repo_id: null, author: "" });
   const [day, setDay] = useState<string | null>(null);
   const [dayCommits, setDayCommits] = useState<CommitRow[] | null>(null);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
+
+  // Same filter dimensions + date range as every other page.
+  const [providers, setProviders] = useState<Set<any>>(S([]));
+  const [orgs, setOrgs] = useState<Set<any>>(S([]));
+  const [projects, setProjects] = useState<Set<any>>(S([]));
+  const [accounts, setAccounts] = useState<Set<any>>(S([]));
+  const [repos, setRepos] = useState<Set<any>>(S([]));
+  const [authors, setAuthors] = useState<Set<any>>(S([]));
+  const [tags, setTags] = useState<Set<any>>(S([]));
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
 
   useEffect(() => { api.facets().then(setFacets).catch(() => {}); }, []);
+
+  const repoDimActive = providers.size || orgs.size || projects.size || accounts.size || repos.size || tags.size;
+  const effRepos = useMemo(() => (facets?.repos || []).filter((r) =>
+    (!providers.size || providers.has(r.provider)) &&
+    (!orgs.size || orgs.has(r.organization)) &&
+    (!projects.size || projects.has(r.project)) &&
+    (!accounts.size || accounts.has(r.account_id)) &&
+    (!repos.size || repos.has(r.id)) &&
+    (!tags.size || (r.tags || []).some((t) => tags.has(t)))
+  ), [facets, providers, orgs, projects, accounts, repos, tags]);
+  const repoIds = repoDimActive ? (effRepos.length ? effRepos.map((r) => r.id) : [-1]) : undefined;
+  const authorList = [...authors] as string[];
+  const qkey = JSON.stringify([repoIds, authorList.sort(), start, end]);
+
   useEffect(() => {
-    api.heatmap({ provider: flt.provider || undefined, repo_id: flt.repo_id ?? undefined, author: flt.author || undefined })
+    api.heatmap({ repo_ids: repoIds, authors: authorList, start: start || undefined, end: end || undefined })
       .then(setCounts).catch((e) => setErr(e.message));
-  }, [flt]);
+  }, [qkey]);
 
   // Year buttons: always at least the last 10 years, plus any older year with data.
   const years = useMemo(() => {
@@ -37,10 +64,10 @@ export default function HeatmapView() {
 
   useEffect(() => {
     if (!day) { setDayCommits(null); return; }
-    setDayCommits(null);  // reset so the git-graph below refreshes on each new day
-    api.commits({ date: day, provider: flt.provider || undefined, repo_id: flt.repo_id ?? undefined, author: flt.author || undefined, limit: 1000 })
+    setDayCommits(null);
+    api.commits({ date: day, repo_ids: repoIds, authors: authorList, start: start || undefined, end: end || undefined, limit: 1000 })
       .then(setDayCommits).catch(() => setDayCommits([]));
-  }, [day, flt]);
+  }, [day, qkey]);
 
   useEffect(() => {
     if (!ref.current || !counts) return;
@@ -66,65 +93,94 @@ export default function HeatmapView() {
     return () => { window.removeEventListener("resize", onResize); chart.dispose(); };
   }, [counts, activeYear]);
 
-  if (err) return <div style={{ padding: 40, color: "#f85149" }}>Error: {err}</div>;
   const total = counts ? Object.values(counts).reduce((a, b) => a + b, 0) : 0;
-  const upd = (p: Partial<typeof flt>) => setFlt((f) => ({ ...f, ...p }));
+
+  // MultiSelect option lists (repo cascades off the higher dimensions).
+  const provOpts: Opt[] = (facets?.providers || []).map((p) => ({ key: p, label: p }));
+  const orgOpts: Opt[] = (facets?.organizations || []).map((o) => ({ key: o.name, label: o.name, badge: o.provider }));
+  const projOpts: Opt[] = (facets?.projects || []).map((p) => ({ key: p.name, label: p.name, badge: p.provider }));
+  const accOpts: Opt[] = (facets?.accounts || []).map((a) => ({ key: a.id, label: a.display_name, badge: a.provider }));
+  const scopedRepos = (facets?.repos || []).filter((r) =>
+    (!providers.size || providers.has(r.provider)) &&
+    (!orgs.size || orgs.has(r.organization)) &&
+    (!projects.size || projects.has(r.project)) &&
+    (!accounts.size || accounts.has(r.account_id)));
+  const repoOpts: Opt[] = scopedRepos.map((r) => ({ key: r.id, label: r.full_name, badge: r.provider }));
+  const authorOpts: Opt[] = (facets?.authors || []).map((a) => ({ key: a.name, label: a.name, count: a.count, badge: a.bot ? "bot" : undefined, badgeColor: "#6e40c9" }));
+  const tagOpts: Opt[] = (facets?.tags || []).map((t) => ({ key: t.name, label: t.name, count: t.count }));
+
+  const repoName = (id: number) => facets?.repos.find((r) => r.id === id)?.full_name || `#${id}`;
+  const accName = (id: number) => facets?.accounts.find((a) => a.id === id)?.display_name || `#${id}`;
+  const del = (set: Set<any>, setter: (s: Set<any>) => void, k: any) => { const n = new Set(set); n.delete(k); setter(n); };
+
+  const dims: FilterDim[] = [
+    { key: "prov", label: "Provider", options: provOpts, selected: providers, onChange: setProviders, placeholder: "All providers" },
+    { key: "org", label: "Organization", options: orgOpts, selected: orgs, onChange: setOrgs, placeholder: "All orgs" },
+    { key: "proj", label: "Project / Workspace", options: projOpts, selected: projects, onChange: setProjects, placeholder: "All projects" },
+    { key: "acc", label: "Account", options: accOpts, selected: accounts, onChange: setAccounts, placeholder: "All accounts" },
+    { key: "repo", label: "Repository", options: repoOpts, selected: repos, onChange: setRepos, placeholder: "All repos" },
+    { key: "auth", label: "Author", options: authorOpts, selected: authors, onChange: setAuthors, placeholder: "All authors" },
+    { key: "tag", label: "Tag", options: tagOpts, selected: tags, onChange: setTags, placeholder: "All tags" },
+  ];
+  const chips: { label: string; rm: () => void }[] = [
+    ...[...providers].map((k) => ({ label: `provider: ${k}`, rm: () => del(providers, setProviders, k) })),
+    ...[...orgs].map((k) => ({ label: `org: ${k}`, rm: () => del(orgs, setOrgs, k) })),
+    ...[...projects].map((k) => ({ label: `project: ${k}`, rm: () => del(projects, setProjects, k) })),
+    ...[...accounts].map((k) => ({ label: `account: ${accName(k)}`, rm: () => del(accounts, setAccounts, k) })),
+    ...[...repos].map((k) => ({ label: `repo: ${repoName(k)}`, rm: () => del(repos, setRepos, k) })),
+    ...[...authors].map((k) => ({ label: `author: ${k}`, rm: () => del(authors, setAuthors, k) })),
+    ...[...tags].map((k) => ({ label: `tag: ${k}`, rm: () => del(tags, setTags, k) })),
+    ...(start || end ? [{ label: `date: ${start || "…"} → ${end || "…"}`, rm: () => { setStart(""); setEnd(""); } }] : []),
+  ];
+  const clearAll = () => { setProviders(S([])); setOrgs(S([])); setProjects(S([])); setAccounts(S([])); setRepos(S([])); setAuthors(S([])); setTags(S([])); setStart(""); setEnd(""); };
 
   const byRepo = useMemo(() => {
     const g: Record<string, CommitRow[]> = {};
     (dayCommits || []).forEach((c) => (g[c.repo] ||= []).push(c));
     return g;
   }, [dayCommits]);
-  const repoId = (name: string) => facets?.repos.find((r) => r.full_name === name)?.id;
+
+  if (err) return <div style={{ padding: 40, color: "#f85149" }}>Error: {err}</div>;
 
   return (
-    <div style={{ padding: 20 }}>
-      {/* filter bar (same dimensions as the graph) */}
-      <div style={{ display: "flex", gap: 10, alignItems: "center", flexWrap: "wrap", marginBottom: 14, padding: 10, border: "1px solid var(--border)", borderRadius: 8, background: "var(--panel)" }}>
-        <b style={{ color: "var(--muted)" }}>Filters:</b>
-        <select style={sel} value={flt.provider} onChange={(e) => upd({ provider: e.target.value })}>
-          <option value="">All providers</option>{facets?.providers.map((p) => <option key={p} value={p}>{p}</option>)}
-        </select>
-        <select style={sel} value={flt.repo_id ?? ""} onChange={(e) => upd({ repo_id: e.target.value ? Number(e.target.value) : null })}>
-          <option value="">All repos</option>{facets?.repos.filter((r) => !flt.provider || r.provider === flt.provider).map((r) => <option key={r.id} value={r.id}>{r.full_name}</option>)}
-        </select>
-        <select style={sel} value={flt.author} onChange={(e) => upd({ author: e.target.value })}>
-          <option value="">All authors</option>{facets?.authors.map((a) => <option key={a.name} value={a.name}>{a.name}</option>)}
-        </select>
-        {(flt.provider || flt.repo_id != null || flt.author) && <button style={{ ...sel, cursor: "pointer" }} onClick={() => setFlt({ provider: "", repo_id: null, author: "" })}>✕ clear</button>}
-      </div>
+    <div style={{ padding: 20 }} className="stats-layout">
+      <FilterPanel dims={dims} open={sidebarOpen} onOpenChange={setSidebarOpen}
+        activeCount={chips.length} chips={chips} onClear={clearAll}
+        dateRange={{ start, end, setStart, setEnd }} />
 
-      <div style={{ marginBottom: 10 }}>
-        <b>{total}</b> commits total
-        <span style={{ marginLeft: 12 }}>
-          {years.map((y) => (
-            <button key={y} onClick={() => setYear(y)} style={{ marginRight: 5, padding: "3px 9px", borderRadius: 6, border: "1px solid var(--border)", cursor: "pointer", background: y === activeYear ? "var(--accent)" : "transparent", color: y === activeYear ? "#fff" : "var(--muted)" }}>{y}</button>
-          ))}
-        </span>
-      </div>
-      <div ref={ref} style={{ width: "100%", height: 190 }} />
-      {total === 0 && <div style={{ color: "var(--muted)" }}>No commits for these filters.</div>}
-
-      {day && (
-        <div style={{ marginTop: 18, borderTop: "1px solid var(--border)", paddingTop: 14 }}>
-          <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
-            <b style={{ fontSize: 16 }}>Commits on {day}</b>
-            <span style={{ color: "var(--muted)" }}>{dayCommits?.length ?? "…"} across {Object.keys(byRepo).length} repos</span>
-            <button onClick={() => setDay(null)} style={{ marginLeft: "auto", ...sel, cursor: "pointer" }}>✕ close</button>
-          </div>
-
-          {dayCommits === null ? <div style={{ color: "var(--muted)" }}>Loading…</div> :
-            Object.entries(byRepo).map(([repo, commits]) => (
-              <div key={repo} style={{ marginBottom: 18 }}>
-                <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
-                  <b style={{ color: "var(--fg)" }}>{repo}</b>
-                  <span style={{ color: "var(--muted)", fontSize: 12 }}>{commits.length} commits</span>
-                </div>
-                <GitGraph commits={commits.map(toGit)} />
-              </div>
+      <div className="stats-main">
+        <div style={{ marginBottom: 10 }}>
+          <b>{total.toLocaleString()}</b> commits total
+          <span style={{ marginLeft: 12 }}>
+            {years.map((y) => (
+              <button key={y} onClick={() => setYear(y)} className={y === activeYear ? "btn btn-active" : "btn"} style={{ marginRight: 5, padding: "3px 9px" }}>{y}</button>
             ))}
+          </span>
         </div>
-      )}
+        <div className="panel"><div ref={ref} style={{ width: "100%", height: 190 }} /></div>
+        {total === 0 && <div style={{ color: "var(--muted)", marginTop: 10 }}>No commits for these filters.</div>}
+
+        {day && (
+          <div className="panel" style={{ marginTop: 18 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
+              <b style={{ fontSize: 16 }}>Commits on {day}</b>
+              <span style={{ color: "var(--muted)" }}>{dayCommits?.length ?? "…"} across {Object.keys(byRepo).length} repos</span>
+              <button onClick={() => setDay(null)} style={{ marginLeft: "auto", ...sel, cursor: "pointer" }}>✕ close</button>
+            </div>
+
+            {dayCommits === null ? <div style={{ color: "var(--muted)" }}>Loading…</div> :
+              Object.entries(byRepo).map(([repo, commits]) => (
+                <div key={repo} style={{ marginBottom: 18 }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>
+                    <b style={{ color: "var(--fg)" }}>{repo}</b>
+                    <span style={{ color: "var(--muted)", fontSize: 12 }}>{commits.length} commits</span>
+                  </div>
+                  <GitGraph commits={commits.map(toGit)} />
+                </div>
+              ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 }

@@ -50,9 +50,13 @@ export const api = {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ client_id, device_code }),
     }).then(j),
-  heatmap: (q?: { provider?: string; repo_id?: number; author?: string }): Promise<Record<string, number>> => {
+  heatmap: (q?: { providers?: string[]; repo_ids?: number[]; authors?: string[]; start?: string; end?: string }): Promise<Record<string, number>> => {
     const p = new URLSearchParams();
-    if (q) Object.entries(q).forEach(([k, v]) => v != null && v !== "" && p.set(k, String(v)));
+    if (q?.providers?.length) p.set("providers", q.providers.join(","));
+    if (q?.repo_ids?.length) p.set("repo_ids", q.repo_ids.join(","));
+    if (q?.authors?.length) p.set("authors", q.authors.join("||"));
+    if (q?.start) p.set("start", q.start);
+    if (q?.end) p.set("end", q.end);
     const qs = p.toString();
     return fetch("/api/heatmap" + (qs ? `?${qs}` : "")).then(j);
   },
@@ -78,9 +82,15 @@ export const api = {
     const qs = p.toString();
     return fetch("/api/facets" + (qs ? `?${qs}` : "")).then(j);
   },
-  commits: (q: { date?: string; provider?: string; repo_id?: number; author?: string; limit?: number }): Promise<CommitRow[]> => {
+  commits: (q: { date?: string; providers?: string[]; repo_ids?: number[]; authors?: string[]; start?: string; end?: string; limit?: number }): Promise<CommitRow[]> => {
     const p = new URLSearchParams();
-    Object.entries(q).forEach(([k, v]) => v != null && v !== "" && p.set(k, String(v)));
+    if (q.date) p.set("date", q.date);
+    if (q.providers?.length) p.set("providers", q.providers.join(","));
+    if (q.repo_ids?.length) p.set("repo_ids", q.repo_ids.join(","));
+    if (q.authors?.length) p.set("authors", q.authors.join("||"));
+    if (q.start) p.set("start", q.start);
+    if (q.end) p.set("end", q.end);
+    if (q.limit != null) p.set("limit", String(q.limit));
     return fetch("/api/commits?" + p.toString()).then(j);
   },
   summary: () => fetch("/api/summary").then(j),
@@ -94,10 +104,11 @@ export interface Facets {
   providers: string[];
   organizations: { name: string; provider: string }[];
   projects: { name: string; provider: string }[];
-  repos: { id: number; full_name: string; provider: string; project: string; repo: string; organization: string; account_id: number }[];
+  repos: { id: number; full_name: string; provider: string; project: string; repo: string; organization: string; account_id: number; tags: string[] }[];
   branches: { name: string; repo_id: number; count: number }[];
   prs: { id: number; number: number; title: string | null; repo_id: number }[];
   authors: { name: string; count: number; bot: boolean }[];
+  tags: { name: string; count: number }[];
   accounts: { id: number; provider: string; username: string; display_name: string }[];
   account_names: string[];
 }
@@ -121,6 +132,9 @@ export interface ChartStats {
   by_weekday: number[];
   night_owl_hour: number;
   busiest_day: { day: string; count: number } | null;
+  repo_stats: { stars: number; forks: number; watchers: number; open_issues: number; releases: number; contributors: number; downloads: number; builds: number; docker_pulls: number; npm_downloads: number };
+  top_starred: { name: string; value: number; id: number }[];
+  tags: { name: string; value: number }[];
   facts: {
     longest_commit: { message: string; author: string | null; sha: string; url: string | null; committed_at: string; repo: string; len: number } | null;
     far_away_commit: { message: string; author: string | null; sha: string; url: string | null; committed_at: string; repo: string } | null;
