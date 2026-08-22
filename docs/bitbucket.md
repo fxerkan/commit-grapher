@@ -3,25 +3,36 @@
 commit-grapher reads Bitbucket Cloud Git metadata (repos, branches, PRs, commits) via the
 REST v2 API. Code is never cloned.
 
-## Create an API token (with Bitbucket scopes)
+## Getting a credential (this is the tricky part)
 
-Atlassian **retired app passwords**, and **workspace access tokens need Premium** — so use an
-**API token with Bitbucket scopes**. A plain Jira API token will **not** work (401): the token
-must explicitly carry Bitbucket scopes.
+Bitbucket Cloud has several token types and they are **not** interchangeable. Pick by what your
+plan allows:
 
-1. Go to **[id.atlassian.com → API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)**.
-2. **Create API token with scopes** → tick the **Bitbucket** scopes: `read:repository:bitbucket`,
-   `read:pullrequest:bitbucket` (and `read:workspace:bitbucket`). Copy the value.
-3. In commit-grapher → provider **Bitbucket**:
-   - **username** = your **Atlassian account email** (e.g. `you@company.com`).
-   - **owner_url** = your workspace, e.g. `https://bitbucket.org/acme` (**required**).
-   - Paste the API token.
+**⚠️ Not this one:** `admin.atlassian.com → API keys` (the *organization* admin keys). Those only
+carry `*:admin` org-management scopes (accounts, groups, domains) — **no Bitbucket scopes** — and
+return 401 against the Bitbucket API. A plain Jira API token also 401s (no Bitbucket scopes).
 
-Auth is HTTP Basic (email + token); the token is stored in your OS keychain, never on disk.
+**Option A — Personal API token with Bitbucket scopes** (free, workspace-wide):
+1. Go to **[id.atlassian.com/manage-profile/security/api-tokens](https://id.atlassian.com/manage-profile/security/api-tokens)**
+   (your *personal* tokens — **not** the org admin page above).
+2. **Create API token with scopes** → choose **Bitbucket** and tick `read:repository:bitbucket`,
+   `read:pullrequest:bitbucket`, `read:workspace:bitbucket`.
+3. In commit-grapher: **username = your Atlassian email**, **owner_url = `https://bitbucket.org/<workspace>`**.
 
-> **Note on token types.** *Workspace / project access tokens* (Workspace settings → Access tokens)
-> are a **Premium** feature. *App passwords* have been removed. The free path is a scoped **API
-> token** as above, or a per-repository **Repository access token**.
+If the scope picker offers no Bitbucket app for your account, use Option B.
+
+**Option B — Repository access token** (free, but one repo at a time):
+Repo → **Repository settings → Access tokens → Create** (scopes: *Repositories: Read*,
+*Pull requests: Read*). In commit-grapher: **leave username blank** (the token authenticates as a
+Bearer token), **owner_url = the repo's workspace**. Note this only sees that single repo.
+
+**Option C — Workspace access token** (**Premium** only): Workspace settings → Access tokens.
+Same as B but covers the whole workspace. Leave username blank.
+
+App passwords have been retired, so they're no longer an option.
+
+Auth: Basic (email + API token) when a username is given, or Bearer (access token) when blank.
+The token is stored in your OS keychain, never on disk.
 
 ## What is synced
 
@@ -34,7 +45,7 @@ Auth is HTTP Basic (email + token); the token is stored in your OS keychain, nev
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `401 Unauthorized` | App password (retired), a Jira-only token, or username isn't the email | Create an API token **with Bitbucket scopes**; username = your Atlassian **email** |
+| `401 Unauthorized` | Org **admin** API key, a Jira-only token, or app password (retired) | Use a token **with Bitbucket scopes** (Option A) or an access token (Option B/C); not the `admin.atlassian.com` key |
 | `403 Forbidden` on some repos | Token lacks access to a private repo | Grant access, or it's simply skipped (crawl is per-repo resilient) |
 | Workspace has 0 repos | Wrong workspace in `owner_url` | Use the exact workspace: `https://bitbucket.org/<workspace>` |
 

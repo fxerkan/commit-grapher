@@ -57,6 +57,8 @@ class NormCommit:
     committed_at: datetime | None
     url: str | None = None
     parents: str | None = None  # comma-separated parent SHAs
+    author_login: str | None = None   # provider handle (for contributor avatars/detail)
+    author_avatar: str | None = None  # avatar URL when the provider exposes it
 
 
 @dataclass
@@ -162,6 +164,37 @@ def _gh_total_count(path: str, token: str) -> int:
         return 0
 
 
+def _gh_languages(full_name: str, token: str) -> dict:
+    """`/languages` -> {lang: bytes}. Pure metadata (byte counts, no code). {} on failure."""
+    try:
+        r = httpx.get(f"{GH}/repos/{full_name}/languages", headers=_gh_headers(token), timeout=30)
+        return r.json() if r.status_code == 200 and isinstance(r.json(), dict) else {}
+    except Exception:  # noqa: BLE001
+        return {}
+
+
+def _gh_contrib_stats(full_name: str, token: str) -> dict:
+    """`/stats/contributors` -> {login: {commits, additions, deletions}}. Line counts are
+    metadata, not code. GitHub returns 202 while it computes stats — best-effort, {} then.
+    # ponytail: GitHub-only, one extra call/repo; skip elsewhere."""
+    try:
+        r = httpx.get(f"{GH}/repos/{full_name}/stats/contributors", headers=_gh_headers(token), timeout=30)
+        data = r.json() if r.status_code == 200 else None
+        if not isinstance(data, list):
+            return {}
+        out = {}
+        for c in data:
+            login = (c.get("author") or {}).get("login")
+            if not login:
+                continue
+            out[login] = {"commits": c.get("total", 0),
+                          "additions": sum(w.get("a", 0) for w in c.get("weeks", [])),
+                          "deletions": sum(w.get("d", 0) for w in c.get("weeks", []))}
+        return out
+    except Exception:  # noqa: BLE001
+        return {}
+
+
 def _npm_stats(full_name: str) -> dict:
     """Verified npm lookup: only counts downloads if the package on the registry links
     its repository back to THIS repo (no name-collision false positives)."""
@@ -231,7 +264,9 @@ class GitHubAdapter:
         downloads = sum(a.get("download_count", 0) for rel in releases for a in rel.get("assets", []))
         out = {"tags": tags, "releases": len(releases), "downloads": downloads,
                "contributors": _gh_count(f"/repos/{h.full_name}/contributors", h.token, {"anon": "true"}),
-               "builds": _gh_total_count(f"/repos/{h.full_name}/actions/runs", h.token)}
+               "builds": _gh_total_count(f"/repos/{h.full_name}/actions/runs", h.token),
+               "languages": _gh_languages(h.full_name, h.token),          # {lang: bytes}
+               "contrib_stats": _gh_contrib_stats(h.full_name, h.token)}  # {login: {commits,additions,deletions}}
         out.update(_npm_stats(h.full_name))       # only if the npm pkg links back to this repo
         out.update(_docker_stats(h.full_name, h.topics))  # only if a docker/container topic
         return out
@@ -261,11 +296,13 @@ class GitHubAdapter:
         out = []
         for c in _gh_paginate(f"/repos/{h.full_name}/commits", h.token, params, max_pages=max_pages):
             a = (c.get("commit") or {}).get("author") or {}
+            gh_user = c.get("author") or {}  # the linked GitHub account (null for non-GH authors)
             out.append(NormCommit(
                 sha=c["sha"], author=a.get("name"), author_email=a.get("email"),
                 message=(c.get("commit") or {}).get("message"), committed_at=_gh_dt(a.get("date")),
                 url=c.get("html_url"),
                 parents=",".join(p["sha"] for p in c.get("parents", [])),
+                author_login=gh_user.get("login"), author_avatar=gh_user.get("avatar_url"),
             ))
         return out
 
@@ -489,11 +526,18 @@ def _bb_ws(owner_url: str) -> str:
     return owner_url.rstrip("/").split("/")[-1]  # .../{workspace}
 
 
-def _bb_paginate(url: str, auth: tuple[str, str], params: dict | None = None, max_pages: int = 50) -> list:
+def _bb_authargs(user: str, token: str) -> dict:
+    """Bitbucket auth: a scoped API token / app password authenticates as Basic (email or
+    username + secret); a workspace/repository *access token* authenticates as Bearer. A blank
+    username signals an access token -> Bearer."""
+    return {"auth": (user, token)} if user else {"headers": {"Authorization": f"Bearer {token}"}}
+
+
+def _bb_paginate(url: str, authargs: dict, params: dict | None = None, max_pages: int = 50) -> list:
     """Follow Bitbucket's `next` cursor (absolute URLs) and concat the `values` arrays."""
     out: list = []
     for _ in range(max_pages):
-        r = httpx.get(url, params=params, auth=auth, timeout=30)
+        r = httpx.get(url, params=params, timeout=30, **authargs)
         r.raise_for_status()
         data = r.json()
         out.extend(data.get("values", []))
@@ -516,18 +560,18 @@ def _bb_dt(s: str | None) -> datetime | None:
 class BitbucketAdapter:
     def list_repos(self, owner_url: str, token: str, username=None) -> list[tuple[NormRepo, BitbucketHandle]]:
         ws = _bb_ws(owner_url)
-        auth_user = username or ws
-        auth = (auth_user, token)
+        auth_user = (username or "").strip()  # email/username -> Basic; blank -> Bearer access token
         out: list[tuple[NormRepo, BitbucketHandle]] = []
-        for r in _bb_paginate(f"{BB}/repositories/{ws}", auth, {"pagelen": 100, "sort": "-updated_on"}):
+        for r in _bb_paginate(f"{BB}/repositories/{ws}", _bb_authargs(auth_user, token),
+                              {"pagelen": 100, "sort": "-updated_on"}):
             default = (r.get("mainbranch") or {}).get("name")
             html = ((r.get("links") or {}).get("html") or {}).get("href", "")
             norm = NormRepo(r["full_name"], html, default, language=r.get("language") or None)
             out.append((norm, BitbucketHandle(ws, r["slug"], default, token, auth_user)))
         return out
 
-    def _auth(self, h: BitbucketHandle) -> tuple[str, str]:
-        return (h.auth_user, h.token)
+    def _auth(self, h: BitbucketHandle) -> dict:
+        return _bb_authargs(h.auth_user, h.token)
 
     def _repo(self, h: BitbucketHandle) -> str:
         return f"{BB}/repositories/{h.workspace}/{h.slug}"

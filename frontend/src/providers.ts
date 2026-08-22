@@ -63,14 +63,14 @@ export const PROVIDERS: ProviderMeta[] = [
   },
   {
     id: "bitbucket", name: "Bitbucket", slug: "bitbucket", color: "#0052cc", supported: true,
-    usernameLabel: "Atlassian email", ownerHint: "https://bitbucket.org/<workspace>",
+    usernameLabel: "Atlassian email (blank for access token)", ownerHint: "https://bitbucket.org/<workspace>",
     tokenUrl: "https://id.atlassian.com/manage-profile/security/api-tokens",
     scopes: "read:repository:bitbucket, read:pullrequest:bitbucket",
     steps: [
       "Reads Bitbucket Cloud metadata (repos, branches, PRs, commits) via REST v2 — code is never cloned.",
-      "Create an API token at id.atlassian.com → API tokens → Create with scopes, and TICK the Bitbucket scopes (read repository + pull requests). App passwords are retired; workspace tokens need Premium.",
-      "‘username’ = your Atlassian account email.",
-      "owner_url is required: your workspace, e.g. https://bitbucket.org/acme.",
+      "NOT the admin.atlassian.com API keys (those are org-admin scopes only). Use id.atlassian.com → API tokens → Create with scopes → tick the Bitbucket scopes. username = your Atlassian email.",
+      "OR a Repository/Workspace access token (Repo/Workspace settings → Access tokens): leave username BLANK — it authenticates as a Bearer token.",
+      "owner_url is required: your workspace, e.g. https://bitbucket.org/acme. See the docs for the full breakdown.",
     ],
   },
   {
