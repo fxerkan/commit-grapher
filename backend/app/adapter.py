@@ -136,14 +136,14 @@ class GitHubAdapter:
             ))
         return out
 
-    def commits(self, h: GitHubHandle, branch=None, since=None) -> list[NormCommit]:
+    def commits(self, h: GitHubHandle, branch=None, since=None, max_pages=MAX_COMMIT_PAGES) -> list[NormCommit]:
         params = {}
         if branch:
             params["sha"] = branch
         if since:
             params["since"] = since.isoformat()
         out = []
-        for c in _gh_paginate(f"/repos/{h.full_name}/commits", h.token, params, max_pages=MAX_COMMIT_PAGES):
+        for c in _gh_paginate(f"/repos/{h.full_name}/commits", h.token, params, max_pages=max_pages):
             a = (c.get("commit") or {}).get("author") or {}
             out.append(NormCommit(
                 sha=c["sha"], author=a.get("name"), author_email=a.get("email"),
@@ -224,8 +224,9 @@ class AzureDevOpsAdapter:
             ))
         return out
 
-    def commits(self, h: AzureHandle, branch=None, since=None) -> list[NormCommit]:
-        params = {"api-version": "7.1", "searchCriteria.$top": 1000}
+    def commits(self, h: AzureHandle, branch=None, since=None, max_pages=None) -> list[NormCommit]:
+        top = 200 if max_pages == 1 else 1000  # smaller pull for secondary branches
+        params = {"api-version": "7.1", "searchCriteria.$top": top}
         if branch:
             params["searchCriteria.itemVersion.version"] = branch
         if since:

@@ -12,6 +12,11 @@ from . import db
 from .adapter import get_adapter
 
 
+# ponytail: cap secondary branches per repo so a 1000-branch repo doesn't melt the API.
+# Feature branches diverge by few commits, so a shallow pull per branch is enough for the DAG.
+MAX_BRANCHES = 40
+
+
 def _iso(dt: datetime | None) -> str | None:
     return dt.isoformat() if dt else None
 
@@ -57,11 +62,13 @@ def sync_account(account_id: int, adapter=None) -> dict:
                 counts["errors"].append(f"{norm_repo.full_name}: {type(e).__name__}")
                 return []
 
+        branch_names: list[str] = []
         for br in safe(lambda: adapter.branches(repo_handle)):
             conn.execute(
                 "INSERT OR IGNORE INTO branches(repo_id, name) VALUES(?,?)",
                 (repo_id, br.name),
             )
+            branch_names.append(br.name)
             counts["branches"] += 1
 
         for pr in safe(lambda: adapter.pull_requests(repo_handle)):
@@ -76,17 +83,28 @@ def sync_account(account_id: int, adapter=None) -> dict:
             )
             counts["pull_requests"] += 1
 
-        for c in safe(lambda: adapter.commits(repo_handle, branch=norm_repo.default_branch)):
-            conn.execute(
-                """INSERT INTO commits(sha, repo_id, branch_ref, author,
-                        author_email, message, committed_at, url, parents)
-                   VALUES(?,?,?,?,?,?,?,?,?)
-                   ON CONFLICT(repo_id, sha) DO UPDATE SET
-                        url=excluded.url, parents=excluded.parents""",
-                (c.sha, repo_id, norm_repo.default_branch, c.author,
-                 c.author_email, c.message, _iso(c.committed_at), c.url, c.parents),
-            )
-            counts["commits"] += 1
+        def store_commits(branch, max_pages=None):
+            fn = (lambda: adapter.commits(repo_handle, branch=branch, max_pages=max_pages)) if max_pages \
+                else (lambda: adapter.commits(repo_handle, branch=branch))
+            for c in safe(fn):
+                conn.execute(
+                    """INSERT INTO commits(sha, repo_id, branch_ref, author,
+                            author_email, message, committed_at, url, parents)
+                       VALUES(?,?,?,?,?,?,?,?,?)
+                       ON CONFLICT(repo_id, sha) DO UPDATE SET
+                            url=excluded.url, parents=excluded.parents""",
+                    (c.sha, repo_id, branch, c.author,
+                     c.author_email, c.message, _iso(c.committed_at), c.url, c.parents),
+                )
+                counts["commits"] += 1
+
+        # Default branch in full; then a capped set of other branches (shallow) so the
+        # git-graph shows real feature-branch/merge structure without an unbounded crawl.
+        default = norm_repo.default_branch
+        store_commits(default)
+        others = [b for b in branch_names if b != default][:MAX_BRANCHES]
+        for b in others:
+            store_commits(b, max_pages=1)
 
         conn.commit()
 
