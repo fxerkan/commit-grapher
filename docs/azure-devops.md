@@ -25,7 +25,7 @@ Fix (org owner): **Organization Settings → Users** → set your access level t
 |---|---|---|
 | `302 → _signin` / redirect to Entra | PAT rejected — empty/invalid, or Stakeholder license, or org blocks PAT/basic auth | Use a valid **Code: Read** PAT; upgrade to **Basic**; check org PAT policy |
 | `401 Unauthorized` | PAT is for a different org, or wrong org name | The username must be the org that owns the PAT |
-| Org has 0 Git repos | Projects use Boards/TFVC, not Git | Only Git repos are synced (Boards/Work Items are a separate integration) |
+| Org has 0 Git repos | Projects use Boards/TFVC, not Git | Only Git repos are synced (Boards **work items** are also pulled, for projects that have repos) |
 
 ## Finding your org name
 

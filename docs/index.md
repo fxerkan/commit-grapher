@@ -6,6 +6,7 @@ Per-platform guides for adding a version-control account. commit-grapher reads *
 |---|---|---|
 | GitHub | ✅ Ready | [github.md](github.md) |
 | Azure DevOps | ✅ Ready | [azure-devops.md](azure-devops.md) |
+| Jira | ✅ Ready | [jira.md](jira.md) — issues matched to your commits/PRs/branches |
 | GitLab | 🔜 Preview | scope `read_api` — settings → Access tokens |
 | Bitbucket | 🔜 Preview | App password, *Repositories: Read* |
 | Gitea | 🔜 Preview | Settings → Applications → token (`repo`); set full `owner_url` for self-hosted |
