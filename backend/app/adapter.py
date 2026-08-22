@@ -10,7 +10,8 @@ Reads REST metadata only — never clones or reads file contents.
 """
 from __future__ import annotations
 
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from datetime import datetime
 
 import httpx
@@ -21,6 +22,12 @@ class NormRepo:
     full_name: str
     url: str
     default_branch: str | None
+    stars: int = 0
+    forks: int = 0
+    watchers: int = 0
+    open_issues: int = 0
+    language: str | None = None
+    topics: tuple[str, ...] = field(default_factory=tuple)
 
 
 @dataclass
@@ -51,11 +58,27 @@ class NormCommit:
     parents: str | None = None  # comma-separated parent SHAs
 
 
+@dataclass
+class NormWorkItem:
+    """A work item / issue (Azure Boards, later Jira). Metadata only: titles + labels,
+    related to a project so it can hang off that project's repos in the graph."""
+    external_id: str
+    wtype: str | None       # Bug / Task / User Story / Epic ...
+    title: str | None
+    state: str | None
+    labels: str | None      # comma-separated tags/labels
+    assignee: str | None
+    url: str | None
+    project: str | None     # relate to repos whose full_name starts with this project
+
+
 def get_adapter(provider: str):
     if provider == "github":
         return GitHubAdapter()
     if provider == "azure":
         return AzureDevOpsAdapter()
+    if provider == "jira":
+        return JiraAdapter()
     raise ValueError(f"no adapter for provider '{provider}' yet")
 
 
@@ -73,6 +96,7 @@ class GitHubHandle:
     full_name: str
     default_branch: str | None
     token: str
+    topics: tuple[str, ...] = field(default_factory=tuple)
 
 
 def _gh_paginate(path: str, token: str, params: dict | None = None, max_pages: int = 100) -> list:
@@ -102,6 +126,72 @@ def _gh_dt(s: str | None) -> datetime | None:
         return None
 
 
+def _gh_headers(token: str) -> dict:
+    return {"Authorization": f"Bearer {token}", "Accept": "application/vnd.github+json"}
+
+
+def _gh_count(path: str, token: str, params: dict | None = None) -> int:
+    """Total item count for a paginated list, read from the Link header's last page
+    (per_page=1 → last-page number == item count). Avoids pulling the whole list."""
+    try:
+        r = httpx.get(f"{GH}{path}", params={**(params or {}), "per_page": 1}, headers=_gh_headers(token), timeout=30)
+        if r.status_code != 200:
+            return 0
+        m = re.search(r'[?&]page=(\d+)>;\s*rel="last"', r.headers.get("link", ""))
+        if m:
+            return int(m.group(1))
+        body = r.json()
+        return len(body) if isinstance(body, list) else 0
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _gh_total_count(path: str, token: str) -> int:
+    """`total_count` from an envelope endpoint (e.g. actions/runs)."""
+    try:
+        r = httpx.get(f"{GH}{path}", params={"per_page": 1}, headers=_gh_headers(token), timeout=30)
+        return r.json().get("total_count", 0) if r.status_code == 200 else 0
+    except Exception:  # noqa: BLE001
+        return 0
+
+
+def _npm_stats(full_name: str) -> dict:
+    """Verified npm lookup: only counts downloads if the package on the registry links
+    its repository back to THIS repo (no name-collision false positives)."""
+    pkg = full_name.split("/")[-1]
+    try:
+        meta = httpx.get(f"https://registry.npmjs.org/{pkg}", timeout=15)
+        if meta.status_code != 200:
+            return {}
+        repo_url = ((meta.json().get("repository") or {}).get("url") or "").lower()
+        if full_name.lower() not in repo_url:
+            return {}
+        dl = httpx.get(f"https://api.npmjs.org/downloads/point/last-month/{pkg}", timeout=15)
+        if dl.status_code == 200:
+            return {"npm_downloads": dl.json().get("downloads", 0)}
+    except Exception:  # noqa: BLE001
+        pass
+    return {}
+
+
+_DOCKER_TOPIC = re.compile(r"docker|container|image|oci", re.I)
+
+
+def _docker_stats(full_name: str, topics: tuple[str, ...]) -> dict:
+    """Docker Hub pulls — only attempted when the repo advertises a docker/container topic,
+    so we don't guess registry names for unrelated repos."""
+    if not _DOCKER_TOPIC.search(" ".join(topics)):
+        return {}
+    ns, _, name = full_name.partition("/")
+    try:
+        r = httpx.get(f"https://hub.docker.com/v2/repositories/{ns.lower()}/{(name or ns).lower()}/", timeout=15)
+        if r.status_code == 200:
+            return {"docker_pulls": r.json().get("pull_count", 0)}
+    except Exception:  # noqa: BLE001
+        pass
+    return {}
+
+
 class GitHubAdapter:
     def list_repos(self, owner_url: str, token: str) -> list[tuple[NormRepo, GitHubHandle]]:
         # Authenticated user's repos (owner + collaborator + org member).
@@ -116,8 +206,27 @@ class GitHubAdapter:
         out: list[tuple[NormRepo, GitHubHandle]] = []
         for r in repos:
             full = r["full_name"]
-            out.append((NormRepo(full, r.get("html_url", ""), r.get("default_branch")),
-                        GitHubHandle(full, r.get("default_branch"), token)))
+            topics = tuple(r.get("topics") or ())
+            # stars/forks/watchers/etc. come free in the repo listing — no extra calls.
+            norm = NormRepo(full, r.get("html_url", ""), r.get("default_branch"),
+                            stars=r.get("stargazers_count") or 0, forks=r.get("forks_count") or 0,
+                            watchers=r.get("subscribers_count") or r.get("watchers_count") or 0,
+                            open_issues=r.get("open_issues_count") or 0,
+                            language=r.get("language"), topics=topics)
+            out.append((norm, GitHubHandle(full, r.get("default_branch"), token, topics)))
+        return out
+
+    def extras(self, h: GitHubHandle) -> dict:
+        """Per-repo summary stats (extra API calls). Best-effort — the crawler wraps this
+        in `safe()`, so any failure just leaves the stat null."""
+        tags = [t["name"] for t in _gh_paginate(f"/repos/{h.full_name}/tags", h.token, max_pages=5)]
+        releases = _gh_paginate(f"/repos/{h.full_name}/releases", h.token, max_pages=5)
+        downloads = sum(a.get("download_count", 0) for rel in releases for a in rel.get("assets", []))
+        out = {"tags": tags, "releases": len(releases), "downloads": downloads,
+               "contributors": _gh_count(f"/repos/{h.full_name}/contributors", h.token, {"anon": "true"}),
+               "builds": _gh_total_count(f"/repos/{h.full_name}/actions/runs", h.token)}
+        out.update(_npm_stats(h.full_name))       # only if the npm pkg links back to this repo
+        out.update(_docker_stats(h.full_name, h.topics))  # only if a docker/container topic
         return out
 
     def branches(self, h: GitHubHandle) -> list[NormBranch]:
@@ -182,6 +291,15 @@ def _az_get(url: str, token: str, **params) -> dict:
     return r.json()
 
 
+def _az_post(url: str, token: str, body: dict, **params) -> dict:
+    # WIQL needs POST; same PAT/basic-auth + no-redirect handling as _az_get.
+    r = httpx.post(url, params=params, json=body, auth=("", token), timeout=30, follow_redirects=False)
+    if 300 <= r.status_code < 400 and "_signin" in r.headers.get("location", ""):
+        raise RuntimeError("Azure rejected the PAT (redirected to sign-in).")
+    r.raise_for_status()
+    return r.json()
+
+
 def _az_dt(s: str | None) -> datetime | None:
     if not s:
         return None
@@ -205,6 +323,11 @@ class AzureDevOpsAdapter:
 
     def _repo_url(self, h: AzureHandle) -> str:
         return f"{h.org_url}/{h.project}/_apis/git/repositories/{h.repo_id}"
+
+    def extras(self, h: AzureHandle) -> dict:
+        # Azure has no stars/forks/releases; expose tags so they still feed the filter + cloud.
+        data = _az_get(f"{self._repo_url(h)}/refs", h.token, **{"api-version": "7.1", "filter": "tags/"})
+        return {"tags": [r["name"].replace("refs/tags/", "") for r in data.get("value", [])]}
 
     def branches(self, h: AzureHandle) -> list[NormBranch]:
         data = _az_get(f"{self._repo_url(h)}/refs", h.token, **{"api-version": "7.1", "filter": "heads/"})
@@ -241,4 +364,93 @@ class AzureDevOpsAdapter:
                 url=c.get("remoteUrl"),
                 parents=",".join(c.get("parents", []) or []),
             ))
+        return out
+
+    # ponytail: newest 200 work items per project (WIQL id list → batched fields). Raise the
+    # cap / add paging only if a real board needs the full backlog. Boards is readable even on
+    # a Stakeholder license (unlike Code), so this works where commit crawl 401s.
+    WI_CAP = 200
+    WI_FIELDS = "System.Title,System.State,System.WorkItemType,System.Tags,System.AssignedTo"
+
+    def work_items(self, owner_url: str, token: str, projects=None, username=None) -> list[NormWorkItem]:
+        org_url = owner_url.rstrip("/")
+        # Only query projects we actually crawled repos for (else a board with 26 projects
+        # dumps thousands of unrelated items). Fall back to all projects if none given.
+        if projects:
+            names = list(projects)
+        else:
+            names = [p["name"] for p in
+                     _az_get(f"{org_url}/_apis/projects", token, **{"api-version": "7.1"}).get("value", [])]
+        out: list[NormWorkItem] = []
+        for proj in names:
+            wiql = _az_post(
+                f"{org_url}/{proj}/_apis/wit/wiql", token,
+                {"query": "SELECT [System.Id] FROM WorkItems ORDER BY [System.ChangedDate] DESC"},
+                **{"api-version": "7.1", "$top": self.WI_CAP})
+            ids = [str(w["id"]) for w in wiql.get("workItems", [])][:self.WI_CAP]
+            for k in range(0, len(ids), 200):  # batch GET caps at 200 ids
+                data = _az_get(f"{org_url}/_apis/wit/workitems", token,
+                               ids=",".join(ids[k:k + 200]), fields=self.WI_FIELDS,
+                               **{"api-version": "7.1"})
+                for w in data.get("value", []):
+                    f = w.get("fields", {})
+                    who = f.get("System.AssignedTo")
+                    out.append(NormWorkItem(
+                        external_id=str(w["id"]),
+                        wtype=f.get("System.WorkItemType"), title=f.get("System.Title"),
+                        state=f.get("System.State"),
+                        labels=(f.get("System.Tags") or "").replace("; ", ",") or None,
+                        assignee=who.get("displayName") if isinstance(who, dict) else None,
+                        url=f"{org_url}/{proj}/_workitems/edit/{w['id']}", project=proj))
+        return out
+
+
+# --------------------------------------------------------------------------- #
+# Jira Cloud (direct REST) — a *separate* platform from the VCS. It has no git repos;
+# it only yields work_items (issues), which match.py then relates to commits/PRs/branches.
+# account.username = Atlassian email, account.owner_url = https://<site>.atlassian.net,
+# token = API token. Auth = HTTP Basic(email, token).
+# --------------------------------------------------------------------------- #
+JIRA_PAGE = 100
+JIRA_CAP = 2000  # ponytail: newest ~2000 issues; raise / add project filter if a board needs more.
+# Enhanced /search/jql rejects unbounded JQL, so bound to a recent window (also the relevant
+# scope for matching against recent commits). ponytail: widen the window if older issues matter.
+JIRA_JQL = "updated >= -365d ORDER BY updated DESC"
+
+
+class JiraAdapter:
+    def list_repos(self, owner_url: str, token: str):
+        return []  # Jira has no git repos — the crawler's repo loop simply no-ops.
+
+    def work_items(self, owner_url: str, token: str, projects=None, username=None) -> list[NormWorkItem]:
+        site = owner_url.rstrip("/")
+        auth = (username or "", token)
+        headers = {"Accept": "application/json"}
+        out: list[NormWorkItem] = []
+        next_token = None
+        # Atlassian retired classic /search (410 Gone); enhanced /search/jql uses a nextPageToken
+        # cursor + isLast instead of startAt/total.
+        while len(out) < JIRA_CAP:
+            params = {"jql": JIRA_JQL, "maxResults": JIRA_PAGE,
+                      "fields": "summary,status,issuetype,labels,assignee,project"}
+            if next_token:
+                params["nextPageToken"] = next_token
+            r = httpx.get(f"{site}/rest/api/3/search/jql", auth=auth, headers=headers, timeout=30, params=params)
+            r.raise_for_status()
+            data = r.json()
+            issues = data.get("issues", [])
+            for it in issues:
+                f = it.get("fields", {})
+                out.append(NormWorkItem(
+                    external_id=it["key"],
+                    wtype=(f.get("issuetype") or {}).get("name"),
+                    title=f.get("summary"),
+                    state=(f.get("status") or {}).get("name"),
+                    labels=",".join(f.get("labels") or []) or None,
+                    assignee=(f.get("assignee") or {}).get("displayName"),
+                    url=f"{site}/browse/{it['key']}",
+                    project=(f.get("project") or {}).get("key") or it["key"].split("-", 1)[0]))
+            next_token = data.get("nextPageToken")
+            if data.get("isLast") or not next_token or not issues:
+                break
         return out

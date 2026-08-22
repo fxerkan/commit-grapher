@@ -37,6 +37,12 @@ CREATE TABLE IF NOT EXISTS branches (
     name     TEXT NOT NULL,
     UNIQUE(repo_id, name)
 );
+CREATE TABLE IF NOT EXISTS tags (
+    id       INTEGER PRIMARY KEY,
+    repo_id  INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
+    name     TEXT NOT NULL,
+    UNIQUE(repo_id, name)
+);
 CREATE TABLE IF NOT EXISTS pull_requests (
     id            INTEGER PRIMARY KEY,
     repo_id       INTEGER NOT NULL REFERENCES repos(id) ON DELETE CASCADE,
@@ -63,10 +69,39 @@ CREATE TABLE IF NOT EXISTS commits (
     PRIMARY KEY (repo_id, sha)
 );
 CREATE INDEX IF NOT EXISTS idx_commits_committed_at ON commits(committed_at);
+CREATE TABLE IF NOT EXISTS work_items (
+    id           INTEGER PRIMARY KEY,
+    account_id   INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    provider     TEXT NOT NULL,
+    external_id  TEXT NOT NULL,   -- provider's work-item / issue id
+    project      TEXT,            -- relates to repos whose full_name starts with this project
+    wtype        TEXT,            -- Bug / Task / User Story / Epic ...
+    title        TEXT,
+    state        TEXT,
+    labels       TEXT,            -- comma-separated tags/labels
+    assignee     TEXT,
+    url          TEXT,
+    UNIQUE(account_id, external_id)
+);
+CREATE TABLE IF NOT EXISTS work_item_links (
+    work_item_id INTEGER NOT NULL REFERENCES work_items(id) ON DELETE CASCADE,
+    node_kind    TEXT NOT NULL,   -- pr | branch | repo (the graph node the issue relates to)
+    node_id      INTEGER NOT NULL,
+    method       TEXT             -- key (exact issue-key hit) | fuzzy (title similarity)
+);
+CREATE INDEX IF NOT EXISTS idx_wil_wi ON work_item_links(work_item_id);
 """
 
 # Columns added after initial release; ALTER on existing DBs (sqlite has no ADD COLUMN IF NOT EXISTS).
-_MIGRATIONS = {"commits": {"url": "TEXT", "parents": "TEXT"}, "accounts": {"display_name": "TEXT"}}
+_MIGRATIONS = {
+    "commits": {"url": "TEXT", "parents": "TEXT"},
+    "accounts": {"display_name": "TEXT"},
+    # Per-repo summary stats fetched during sync (see crawler/adapter). Null = not yet synced.
+    "repos": {"stars": "INTEGER", "forks": "INTEGER", "watchers": "INTEGER",
+              "open_issues": "INTEGER", "language": "TEXT", "releases": "INTEGER",
+              "downloads": "INTEGER", "contributors": "INTEGER", "builds": "INTEGER",
+              "docker_pulls": "INTEGER", "npm_downloads": "INTEGER"},
+}
 
 
 def _migrate(conn: sqlite3.Connection) -> None:

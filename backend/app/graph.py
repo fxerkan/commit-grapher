@@ -19,6 +19,7 @@ COLORS = {
     "branch": "#3fb950",
     "pr": "#bc8cff",
     "commit": "#d29922",
+    "workitem": "#db61a2",
 }
 EXPAND_COMMIT_CAP = 300  # ponytail: cap expanded commit nodes per repo; drill deeper later if needed.
 
@@ -49,6 +50,7 @@ def build(provider: str | None = None, focus_repo: int | None = None,
     conn = db.connect()
     nodes: list[dict] = []
     edges: list[dict] = []
+    added: set[str] = set()  # node keys already emitted (so cross-account Jira links only draw to real nodes)
     i = 0
     authors = [a for a in (authors or []) if a]
 
@@ -74,6 +76,7 @@ def build(provider: str | None = None, focus_repo: int | None = None,
         if organization is not None:
             attrs["organization"] = organization
         nodes.append({"key": key, "attributes": attrs})
+        added.add(key)
 
     if provider:
         accounts = conn.execute("SELECT * FROM accounts WHERE provider=?", (provider,)).fetchall()
@@ -106,10 +109,12 @@ def build(provider: str | None = None, focus_repo: int | None = None,
         akey = f"account:{acc['id']}"
         add_node(akey, f"{acc['display_name'] or acc['username']} ({acc['provider']})", "account", 14)
 
+        proj_repo_keys: dict[str, list[str]] = {}  # project -> visible repo node keys (for work items)
         for repo in repos:
             _proj = _project_of(repo["full_name"])
             _org = _org_of(acc, repo["full_name"])
             rid = repo["id"]
+            proj_repo_keys.setdefault(_proj, []).append(f"repo:{rid}")
             rkey = f"repo:{rid}"
             ncommits = conn.execute("SELECT COUNT(*) n FROM commits WHERE repo_id=?", (rid,)).fetchone()["n"]
             add_node(rkey, repo["full_name"], "repo", 6 + math.log1p(ncommits) * 3, repo_id=rid, project=_proj, organization=_org)
@@ -146,6 +151,78 @@ def build(provider: str | None = None, focus_repo: int | None = None,
                     label = (cm["message"] or cm["sha"]).splitlines()[0][:48]
                     add_node(ckey, label, "commit", 2, repo_id=rid, author=cm["author"], project=_proj)
                     edges.append({"key": f"{rkey}->{ckey}", "source": rkey, "target": ckey})
+
+        # Work items / issues → hung off their project's visible repos (skipped when a single
+        # repo is focused, to keep the drill-down about that repo's commits).
+        if focus_repo is None and not authors:
+            for wi in conn.execute("SELECT * FROM work_items WHERE account_id=?", (acc["id"],)).fetchall():
+                repo_keys = proj_repo_keys.get(wi["project"])
+                if not repo_keys:  # its project isn't in the current filter scope
+                    continue
+                _org = _org_of(acc, f"{wi['project']}/")
+                wkey = f"wi:{wi['id']}"
+                title = (wi["title"] or wi["external_id"])[:48]
+                add_node(wkey, f"{wi['wtype'] or 'WI'} · {title}", "workitem", 3,
+                         project=wi["project"], organization=_org)
+                for rkey in repo_keys:
+                    edges.append({"key": f"{rkey}->{wkey}", "source": rkey, "target": wkey})
+
+    # --- Jira issues: a separate platform bridged to git via match.py links. Cross-account, so
+    #     it runs after every git node exists and only draws to nodes actually in the (filtered)
+    #     graph — an issue with no visible match simply doesn't appear.
+    if focus_repo is None and not authors:
+        def ensure_target(kind, node_id):
+            # A Jira match's git node (pr/branch/repo). Add it on demand if the current filter
+            # didn't already include it, so selecting the Jira account still reveals the match.
+            key = f"{kind}:{node_id}"
+            if key in added:
+                return key
+            if kind == "repo":
+                row = conn.execute("SELECT r.full_name, a.provider, a.username FROM repos r "
+                                   "JOIN accounts a ON a.id=r.account_id WHERE r.id=?", (node_id,)).fetchone()
+                if row:
+                    add_node(key, row["full_name"], "repo", 8, repo_id=node_id,
+                             project=_project_of(row["full_name"]), organization=_org_of(row, row["full_name"]))
+                    return key
+            elif kind == "branch":
+                row = conn.execute("SELECT b.name, b.repo_id, r.full_name, a.provider, a.username FROM branches b "
+                                   "JOIN repos r ON r.id=b.repo_id JOIN accounts a ON a.id=r.account_id "
+                                   "WHERE b.id=?", (node_id,)).fetchone()
+                if row:
+                    add_node(key, row["name"], "branch", 3, repo_id=row["repo_id"],
+                             project=_project_of(row["full_name"]), organization=_org_of(row, row["full_name"]))
+                    return key
+            elif kind == "pr":
+                row = conn.execute("SELECT p.number, p.title, p.repo_id, r.full_name FROM pull_requests p "
+                                   "JOIN repos r ON r.id=p.repo_id WHERE p.id=?", (node_id,)).fetchone()
+                if row:
+                    add_node(key, f"#{row['number']} {row['title'] or ''}".strip(), "pr", 4,
+                             repo_id=row["repo_id"], project=_project_of(row["full_name"]))
+                    return key
+            return None
+
+        for acc in (a for a in accounts if a["provider"] == "jira"):
+            akey = f"account:{acc['id']}"
+            acct_added = False
+            rows = conn.execute(
+                """SELECT w.id, w.external_id, w.title, w.project, l.node_kind, l.node_id
+                   FROM work_items w JOIN work_item_links l ON l.work_item_id = w.id
+                   WHERE w.account_id=? AND w.provider='jira'""", (acc["id"],)).fetchall()
+            by_wi: dict[int, tuple] = {}
+            for r in rows:
+                tkey = ensure_target(r["node_kind"], r["node_id"])
+                if tkey:
+                    by_wi.setdefault(r["id"], (r, []))[1].append(tkey)
+            for _wid, (r, tkeys) in by_wi.items():
+                if not acct_added:
+                    add_node(akey, f"{acc['display_name'] or acc['username']} (jira)", "account", 14)
+                    acct_added = True
+                wkey = f"wi:{r['id']}"
+                title = (r["title"] or r["external_id"])[:48]
+                add_node(wkey, f"{r['external_id']} · {title}", "workitem", 3, project=r["project"])
+                edges.append({"key": f"{akey}->{wkey}", "source": akey, "target": wkey})
+                for tkey in tkeys:
+                    edges.append({"key": f"{wkey}->{tkey}", "source": wkey, "target": tkey})
 
     conn.close()
     return {"nodes": nodes, "edges": edges}

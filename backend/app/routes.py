@@ -5,7 +5,7 @@ from datetime import datetime, timezone
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from . import charts, config, crawler, db, graph, oauth
+from . import charts, config, crawler, db, graph, match, oauth
 
 router = APIRouter(prefix="/api")
 
@@ -88,6 +88,12 @@ def sync(account_id: int):
         raise HTTPException(502, f"{type(e).__name__}: {e}")
 
 
+@router.post("/match")
+def rematch():
+    """Recompute Jira-issue <-> git links (commits/PRs/branches) across all accounts."""
+    return {"links": match.rebuild_links()}
+
+
 class OAuthStart(BaseModel):
     client_id: str
 
@@ -128,8 +134,12 @@ def get_graph(provider: str | None = None, repo_id: int | None = None, authors: 
 
 
 @router.get("/heatmap")
-def get_heatmap(provider: str | None = None, repo_id: int | None = None, author: str | None = None):
-    return charts.heatmap(provider, repo_id, author)
+def get_heatmap(providers: str | None = None, repo_ids: str | None = None,
+                authors: str | None = None, start: str | None = None, end: str | None = None):
+    plist = [p for p in (providers.split(",") if providers else []) if p]
+    rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
+    alist = [a for a in (authors.split("||") if authors else []) if a]
+    return charts.heatmap(plist or None, rids, alist or None, start, end)
 
 
 @router.get("/gitgraph")
@@ -160,9 +170,12 @@ def import_data(payload: dict):
 
 
 @router.get("/commits")
-def get_commits(date: str | None = None, provider: str | None = None,
-                repo_id: int | None = None, author: str | None = None, limit: int = 500):
-    return charts.commits_query(date, provider, repo_id, author, limit)
+def get_commits(date: str | None = None, providers: str | None = None, repo_ids: str | None = None,
+                authors: str | None = None, start: str | None = None, end: str | None = None, limit: int = 500):
+    plist = [p for p in (providers.split(",") if providers else []) if p]
+    rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
+    alist = [a for a in (authors.split("||") if authors else []) if a]
+    return charts.commits_query(date, plist or None, rids, alist or None, start, end, limit)
 
 
 import re as _re
@@ -184,6 +197,10 @@ def get_facets(provider: str | None = None, projects: str | None = None, repo_id
     acc_by_id = {a["id"]: a for a in accounts}
     providers = [r["provider"] for r in conn.execute("SELECT DISTINCT provider FROM repos ORDER BY provider")]
 
+    repo_tags: dict[int, list[str]] = {}
+    for r in conn.execute("SELECT repo_id, name FROM tags"):
+        repo_tags.setdefault(r["repo_id"], []).append(r["name"])
+
     all_repos, projects_map, orgs_map = [], {}, {}
     for r in conn.execute("SELECT id, account_id, full_name, provider FROM repos ORDER BY full_name"):
         proj = r["full_name"].split("/", 1)[0] if "/" in r["full_name"] else r["full_name"]
@@ -192,7 +209,8 @@ def get_facets(provider: str | None = None, projects: str | None = None, repo_id
         org = acc.get("username") if r["provider"] == "azure" else proj  # azure org / github owner
         projects_map[proj] = r["provider"]; orgs_map[org] = r["provider"]
         all_repos.append({"id": r["id"], "account_id": r["account_id"], "full_name": r["full_name"],
-                          "provider": r["provider"], "project": proj, "repo": short, "organization": org})
+                          "provider": r["provider"], "project": proj, "repo": short, "organization": org,
+                          "tags": repo_tags.get(r["id"], [])})
 
     def in_scope(r, use_repo_ids=True):
         return ((not provider or r["provider"] == provider)
@@ -210,12 +228,14 @@ def get_facets(provider: str | None = None, projects: str | None = None, repo_id
     authors = [{"name": r["author"], "count": r["n"], "bot": bool(_BOT.search(r["author"]))} for r in conn.execute(
         f"SELECT author, COUNT(*) n FROM commits WHERE author IS NOT NULL AND repo_id IN ({ph}) "
         "GROUP BY author ORDER BY n DESC", scoped_ids)]
+    tags = [{"name": r["name"], "count": r["n"]} for r in conn.execute(
+        f"SELECT name, COUNT(*) n FROM tags WHERE repo_id IN ({ph}) GROUP BY name ORDER BY n DESC", scoped_ids)]
     conn.close()
     return {"providers": providers,
             "organizations": [{"name": k, "provider": v} for k, v in sorted(orgs_map.items())],
             "projects": [{"name": k, "provider": v} for k, v in sorted(projects_map.items())],
             "repos": [r for r in all_repos if in_scope(r, use_repo_ids=False)],
-            "branches": branches, "prs": prs, "authors": authors,
+            "branches": branches, "prs": prs, "authors": authors, "tags": tags,
             "accounts": [{"id": a["id"], "provider": a["provider"], "username": a["username"],
                           "display_name": a["display_name"] or a["username"]} for a in accounts],
             "account_names": [a["username"] for a in accounts]}

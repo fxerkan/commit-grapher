@@ -39,6 +39,18 @@ export const PROVIDERS: ProviderMeta[] = [
     ],
   },
   {
+    id: "jira", name: "Jira", slug: "jira", color: "#2684ff", supported: true,
+    usernameLabel: "Atlassian email", ownerHint: "https://<your-site>.atlassian.net",
+    tokenUrl: "https://id.atlassian.com/manage-profile/security/api-tokens",
+    scopes: "read (Jira issues)",
+    steps: [
+      "A separate platform from your VCS — its issues/tasks are matched to your commits & PRs.",
+      "Create an API token at id.atlassian.com → Security → API tokens → Create.",
+      "‘username’ here is your Atlassian account email; paste the API token below.",
+      "owner_url is required: your site, e.g. https://acme.atlassian.net.",
+    ],
+  },
+  {
     id: "gitlab", name: "GitLab", slug: "gitlab", color: "#fc6d26", supported: false,
     usernameLabel: "username", ownerHint: "https://gitlab.com/<username>",
     tokenUrl: "https://gitlab.com/-/user_settings/personal_access_tokens",

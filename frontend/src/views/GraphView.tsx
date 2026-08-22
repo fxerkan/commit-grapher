@@ -7,10 +7,16 @@ import {
 import "@react-sigma/core/lib/react-sigma.min.css";
 import { EdgeArrowProgram, EdgeRectangleProgram } from "sigma/rendering";
 import { api, Facets, GraphData } from "../api";
-import MultiSelect from "../components/MultiSelect";
+import FilterPanel, { FilterDim } from "../components/FilterPanel";
 
-const TYPES = ["account", "repo", "branch", "pr", "commit"] as const;
+const TYPES = ["account", "repo", "branch", "pr", "commit", "workitem"] as const;
 type NodeType = (typeof TYPES)[number];
+const TYPE_LABEL: Record<string, string> = { pr: "PR", workitem: "Work item" };
+// Mirror backend graph.py COLORS so the legend swatches match the on-canvas node colors.
+const TYPE_COLOR: Record<NodeType, string> = {
+  account: "#f78166", repo: "#58a6ff", branch: "#3fb950", pr: "#bc8cff",
+  commit: "#d29922", workitem: "#db61a2",
+};
 
 interface Filters {
   types: Set<NodeType>;
@@ -155,9 +161,8 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
   return null;
 }
 
-// --- sidebar layout ---
-const lbl: React.CSSProperties = { display: "block", color: "var(--muted)", margin: "12px 0 4px", fontSize: 12 };
-const box: React.CSSProperties = { width: "100%", padding: "7px 9px", borderRadius: 6, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--fg)" };
+// --- sidebar control styling (for the graph-specific extras rendered inside FilterPanel) ---
+const box: React.CSSProperties = { width: "100%", padding: "7px 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--fg)" };
 
 export default function GraphView() {
   const [facets, setFacets] = useState<Facets | null>(null);
@@ -168,7 +173,6 @@ export default function GraphView() {
   const [width, setWidth] = useState(280);
   const [onlyMine, setOnlyMine] = useState(false);
   const [showArrows, setShowArrows] = useState(false);
-  const [openDrop, setOpenDrop] = useState<string | null>(null);  // only one dropdown open at a time
   const [myNamesStr, setMyNamesStr] = useState(localStorage.getItem("myNames") || "");
 
   // server-side filters
@@ -263,99 +267,77 @@ export default function GraphView() {
     badge: a.bot ? "AI" : undefined, badgeColor: "#8957e5",
   }));
 
+  const dims: FilterDim[] = [
+    { key: "provider", label: "Provider", options: providerOpts, selected: provider, placeholder: "All providers",
+      onChange: (s) => { setProvider(s); setOrganizations(new Set()); setProjects(new Set()); setRepos(new Set()); } },
+    { key: "account", label: "Account", options: accountOpts, selected: accountIds, placeholder: "All accounts",
+      onChange: (s) => { setAccountIds(s); setOrganizations(new Set()); setProjects(new Set()); setRepos(new Set()); } },
+    { key: "org", label: "Organization", options: orgOpts, selected: organizations, placeholder: "All organizations",
+      onChange: (s) => { setOrganizations(s); setProjects(new Set()); setRepos(new Set()); } },
+    { key: "project", label: "Workspace", options: projectOpts, selected: projects, placeholder: "All workspaces",
+      onChange: (s) => { setProjects(s); setRepos(new Set()); } },
+    { key: "repo", label: "Repository", options: repoOpts, selected: repos, placeholder: "All repositories", onChange: setRepos },
+    { key: "branch", label: "Branch", options: branchOpts, selected: branchSel, placeholder: "All branches", onChange: setBranchSel },
+    { key: "pr", label: "Pull request", options: prOpts, selected: prSel, placeholder: "All PRs", onChange: setPrSel },
+    { key: "author", label: "Author", options: authorOpts, selected: authors, placeholder: "All authors", onChange: setAuthors },
+  ];
+
+  // Graph-specific controls that don't exist on other pages.
+  const extra = (
+    <>
+      <label style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--fg)", fontSize: 13 }}>
+        <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Only my activity
+      </label>
+      {onlyMine && (
+        <input style={box} placeholder="my names, comma-separated" value={myNamesStr}
+          onChange={(e) => { setMyNamesStr(e.target.value); localStorage.setItem("myNames", e.target.value); }} />
+      )}
+      <div>
+        <div className="field-label">Contributors</div>
+        <div style={{ display: "flex", gap: 4 }}>
+          {(["all", "human", "ai"] as const).map((k) => (
+            <button key={k} onClick={() => setFilters((f) => ({ ...f, humanAI: k }))}
+              className={filters.humanAI === k ? "btn btn-active" : "btn"}>{k === "ai" ? "AI" : k[0].toUpperCase() + k.slice(1)}</button>
+          ))}
+        </div>
+      </div>
+      <div>
+        <div className="field-label">Search any node</div>
+        <input style={box} placeholder="repo / PR / commit…" value={filters.search} onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))} />
+      </div>
+      <div>
+        <div className="field-label">Node types</div>
+        {TYPES.map((t) => (
+          <label key={t} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--fg)", padding: "2px 0", textTransform: "capitalize", fontSize: 13 }}>
+            <input type="checkbox" checked={filters.types.has(t)} onChange={() => setFilters((f) => { const s = new Set(f.types); s.has(t) ? s.delete(t) : s.add(t); return { ...f, types: s }; })} />
+            <span style={{ width: 11, height: 11, borderRadius: 3, background: TYPE_COLOR[t], flex: "0 0 auto", boxShadow: "0 0 0 1px rgba(0,0,0,.25) inset" }} /> {TYPE_LABEL[t] || t}
+          </label>
+        ))}
+        <label style={{ display: "flex", alignItems: "center", gap: 6, margin: "8px 0 0", color: "var(--fg)", fontSize: 13 }}>
+          <input type="checkbox" checked={showArrows} onChange={(e) => setShowArrows(e.target.checked)} /> Show relationship arrows
+        </label>
+      </div>
+    </>
+  );
+
+  const footer = (
+    <>
+      <button className={activeCount ? "btn btn-accent2" : "btn"} style={{ marginTop: 4 }} onClick={resetAll}>
+        Reset filters {activeCount > 0 && `(${activeCount})`}
+      </button>
+      <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 11 }}>
+        {data ? `${data.nodes.length} nodes · ${data.edges.length} edges` : "…"}<br />
+        Drag nodes · scroll to zoom · click a repo to focus, click again / background to reset.
+      </div>
+    </>
+  );
+
   if (err) return <div style={{ padding: 40, color: "#f85149" }}>Error: {err}</div>;
 
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden" }}>
-      {open ? (
-        <aside style={{ width, flexShrink: 0, padding: 14, borderRight: "1px solid var(--border)", overflowY: "auto", background: "var(--bg)", position: "relative" }}>
-          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-            <strong>Filters {activeCount > 0 && <span style={{ background: "var(--accent)", color: "#fff", borderRadius: 10, fontSize: 11, padding: "1px 7px" }}>{activeCount}</span>}</strong>
-            <button onClick={() => setOpen(false)} style={{ ...box, width: "auto", padding: "2px 8px", cursor: "pointer" }}>◀</button>
-          </div>
-
-          <label style={lbl}>Provider</label>
-          <MultiSelect options={providerOpts} selected={provider} onChange={(s) => { setProvider(s); setOrganizations(new Set()); setProjects(new Set()); setRepos(new Set()); }} placeholder="All providers"
-            open={openDrop === "provider"} onOpenChange={(o) => setOpenDrop(o ? "provider" : null)} />
-
-          <label style={lbl}>Account</label>
-          <MultiSelect options={accountOpts} selected={accountIds} onChange={(s) => { setAccountIds(s); setOrganizations(new Set()); setProjects(new Set()); setRepos(new Set()); }} placeholder="All accounts"
-            open={openDrop === "account"} onOpenChange={(o) => setOpenDrop(o ? "account" : null)} />
-
-          <label style={lbl}>Organization</label>
-          <MultiSelect options={orgOpts} selected={organizations} onChange={(s) => { setOrganizations(s); setProjects(new Set()); setRepos(new Set()); }} placeholder="All organizations"
-            open={openDrop === "org"} onOpenChange={(o) => setOpenDrop(o ? "org" : null)} />
-
-          <label style={lbl}>Workspace</label>
-          <MultiSelect options={projectOpts} selected={projects} onChange={(s) => { setProjects(s); setRepos(new Set()); }} placeholder="All workspaces"
-            open={openDrop === "project"} onOpenChange={(o) => setOpenDrop(o ? "project" : null)} />
-
-          <label style={lbl}>Repository</label>
-          <MultiSelect options={repoOpts} selected={repos} onChange={setRepos} placeholder="All repositories"
-            open={openDrop === "repo"} onOpenChange={(o) => setOpenDrop(o ? "repo" : null)} />
-
-          <label style={lbl}>Branch</label>
-          <MultiSelect options={branchOpts} selected={branchSel} onChange={setBranchSel} placeholder="All branches"
-            open={openDrop === "branch"} onOpenChange={(o) => setOpenDrop(o ? "branch" : null)} />
-
-          <label style={lbl}>Pull request</label>
-          <MultiSelect options={prOpts} selected={prSel} onChange={setPrSel} placeholder="All PRs"
-            open={openDrop === "pr"} onOpenChange={(o) => setOpenDrop(o ? "pr" : null)} />
-
-          <label style={lbl}>Author</label>
-          <MultiSelect options={authorOpts} selected={authors} onChange={setAuthors} placeholder="All authors"
-            open={openDrop === "author"} onOpenChange={(o) => setOpenDrop(o ? "author" : null)} />
-
-
-          <label style={{ display: "flex", alignItems: "center", gap: 6, margin: "10px 0", color: "var(--fg)", fontSize: 13 }}>
-            <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Only my activity
-          </label>
-          {onlyMine && (
-            <input style={box} placeholder="my names, comma-separated" value={myNamesStr}
-              onChange={(e) => { setMyNamesStr(e.target.value); localStorage.setItem("myNames", e.target.value); }} />
-          )}
-
-          <label style={lbl}>Contributors</label>
-          <div style={{ display: "flex", gap: 4 }}>
-            {(["all", "human", "ai"] as const).map((k) => (
-              <button key={k} onClick={() => setFilters((f) => ({ ...f, humanAI: k }))}
-                style={{ ...box, cursor: "pointer", background: filters.humanAI === k ? "var(--accent)" : "var(--panel)", color: filters.humanAI === k ? "#fff" : "var(--fg)" }}>{k === "ai" ? "AI" : k[0].toUpperCase() + k.slice(1)}</button>
-            ))}
-          </div>
-
-          <label style={lbl}>Search any node</label>
-          <input style={box} placeholder="repo / PR / commit…" value={filters.search} onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))} />
-
-          <label style={lbl}>Node types</label>
-          {TYPES.map((t) => (
-            <label key={t} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--fg)", padding: "2px 0", textTransform: "capitalize", fontSize: 13 }}>
-              <input type="checkbox" checked={filters.types.has(t)} onChange={() => setFilters((f) => { const s = new Set(f.types); s.has(t) ? s.delete(t) : s.add(t); return { ...f, types: s }; })} /> {t}
-            </label>
-          ))}
-          <label style={{ display: "flex", alignItems: "center", gap: 6, margin: "8px 0 0", color: "var(--fg)", fontSize: 13 }}>
-            <input type="checkbox" checked={showArrows} onChange={(e) => setShowArrows(e.target.checked)} /> Show relationship arrows
-          </label>
-
-          <button style={{ ...box, marginTop: 12, cursor: "pointer", background: activeCount ? "#8957e5" : "var(--panel)", color: activeCount ? "#fff" : "var(--muted)", border: activeCount ? "none" : "1px solid var(--border)" }} onClick={resetAll}>
-            Reset filters {activeCount > 0 && `(${activeCount})`}
-          </button>
-
-          <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 11 }}>
-            {data ? `${data.nodes.length} nodes · ${data.edges.length} edges` : "…"}<br />
-            Drag nodes · scroll to zoom · click a repo to focus, click again / background to reset.
-          </div>
-
-          {/* resize handle */}
-          <div onMouseDown={(e) => {
-            const startX = e.clientX, startW = width;
-            const move = (ev: MouseEvent) => setWidth(Math.max(200, Math.min(560, startW + ev.clientX - startX)));
-            const up = () => { window.removeEventListener("mousemove", move); window.removeEventListener("mouseup", up); };
-            window.addEventListener("mousemove", move); window.addEventListener("mouseup", up);
-          }} style={{ position: "absolute", top: 0, right: 0, width: 6, height: "100%", cursor: "col-resize" }} />
-        </aside>
-      ) : (
-        <button onClick={() => setOpen(true)} style={{ ...box, width: "auto", height: 32, margin: 8, padding: "2px 10px", cursor: "pointer" }}>▶ Filters {activeCount > 0 && `(${activeCount})`}</button>
-      )}
+    <div style={{ display: "flex", height: "100%", overflow: "hidden", gap: 12, padding: 12 }}>
+      <FilterPanel dims={dims} open={open} onOpenChange={setOpen} activeCount={activeCount}
+        extra={extra} footer={footer} width={width} onWidthChange={setWidth} />
 
       <div style={{ flex: 1, minWidth: 0, overflow: "hidden", position: "relative" }}>
         {updating && <div style={{ position: "absolute", top: 10, right: 14, zIndex: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", fontSize: 12, color: "var(--muted)" }}>updating…</div>}
