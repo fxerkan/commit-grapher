@@ -3,20 +3,25 @@
 commit-grapher reads Bitbucket Cloud Git metadata (repos, branches, PRs, commits) via the
 REST v2 API. Code is never cloned.
 
-## Create an API token
+## Create an API token (with Bitbucket scopes)
 
-Atlassian **deprecated app passwords** — use an API token.
+Atlassian **retired app passwords**, and **workspace access tokens need Premium** — so use an
+**API token with Bitbucket scopes**. A plain Jira API token will **not** work (401): the token
+must explicitly carry Bitbucket scopes.
 
-1. Go to **[id.atlassian.com → Security → API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)**.
-2. **Create API token**, label it, copy the value.
+1. Go to **[id.atlassian.com → API tokens](https://id.atlassian.com/manage-profile/security/api-tokens)**.
+2. **Create API token with scopes** → tick the **Bitbucket** scopes: `read:repository:bitbucket`,
+   `read:pullrequest:bitbucket` (and `read:workspace:bitbucket`). Copy the value.
 3. In commit-grapher → provider **Bitbucket**:
-   - **username** = your **workspace id** (e.g. `acme`) for a personal workspace, or your **login**
-     for an org workspace where the two differ.
-   - **owner_url** defaults to `https://bitbucket.org/<workspace>` — set it explicitly if your login
-     differs from the workspace you want to read.
+   - **username** = your **Atlassian account email** (e.g. `you@company.com`).
+   - **owner_url** = your workspace, e.g. `https://bitbucket.org/acme` (**required**).
    - Paste the API token.
 
-Auth is HTTP Basic (login + token); the token is stored in your OS keychain, never on disk.
+Auth is HTTP Basic (email + token); the token is stored in your OS keychain, never on disk.
+
+> **Note on token types.** *Workspace / project access tokens* (Workspace settings → Access tokens)
+> are a **Premium** feature. *App passwords* have been removed. The free path is a scoped **API
+> token** as above, or a per-repository **Repository access token**.
 
 ## What is synced
 
@@ -29,8 +34,8 @@ Auth is HTTP Basic (login + token); the token is stored in your OS keychain, nev
 
 | Symptom | Cause | Fix |
 |---|---|---|
-| `401 Unauthorized` | App password (retired) or wrong login | Create an **API token** at id.atlassian.com; username must be the workspace/login that can read it |
-| `403 Forbidden` on some repos | Token/user lacks access to a private repo | Grant the account access, or it's simply skipped (crawl is per-repo resilient) |
+| `401 Unauthorized` | App password (retired), a Jira-only token, or username isn't the email | Create an API token **with Bitbucket scopes**; username = your Atlassian **email** |
+| `403 Forbidden` on some repos | Token lacks access to a private repo | Grant access, or it's simply skipped (crawl is per-repo resilient) |
 | Workspace has 0 repos | Wrong workspace in `owner_url` | Use the exact workspace: `https://bitbucket.org/<workspace>` |
 
 ## Finding your workspace

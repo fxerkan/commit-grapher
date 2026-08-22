@@ -15,7 +15,7 @@ OWNER_URL = {
     "github": "https://github.com/{u}",
     "gitlab": "https://gitlab.com/{u}",
     "codeberg": "https://codeberg.org/{u}",
-    "bitbucket": "https://bitbucket.org/{u}",
+    # bitbucket: no default — username is the Atlassian email, so owner_url (the workspace URL) is required.
     "azure": "https://dev.azure.com/{u}",
 }
 
