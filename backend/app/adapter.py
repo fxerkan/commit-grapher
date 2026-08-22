@@ -13,6 +13,7 @@ from __future__ import annotations
 import re
 from dataclasses import dataclass, field
 from datetime import datetime
+from urllib.parse import quote, urlparse
 
 import httpx
 
@@ -81,6 +82,10 @@ def get_adapter(provider: str):
         return JiraAdapter()
     if provider == "bitbucket":
         return BitbucketAdapter()
+    if provider == "gitlab":
+        return GitLabAdapter()
+    if provider in ("gitea", "codeberg"):
+        return GiteaAdapter()
     raise ValueError(f"no adapter for provider '{provider}' yet")
 
 
@@ -564,5 +569,207 @@ class BitbucketAdapter:
                 message=c.get("message"), committed_at=_bb_dt(c.get("date")),
                 url=((c.get("links") or {}).get("html") or {}).get("href"),
                 parents=",".join(p["hash"] for p in c.get("parents", [])),
+            ))
+        return out
+
+
+# --------------------------------------------------------------------------- #
+# GitLab (REST v4). owner_url = https://gitlab.com/{namespace} (or a self-hosted host);
+# namespace can be a user or a group. Auth = PRIVATE-TOKEN header (public repos need none).
+# --------------------------------------------------------------------------- #
+@dataclass
+class GitLabHandle:
+    api: str            # https://{host}/api/v4
+    pid: int            # numeric project id
+    default_branch: str | None
+    token: str
+
+
+def _gl_parse(owner_url: str) -> tuple[str, str]:
+    u = urlparse(owner_url.rstrip("/"))
+    return f"{u.scheme}://{u.netloc}/api/v4", u.path.strip("/")
+
+
+def _gl_headers(token: str) -> dict:
+    return {"PRIVATE-TOKEN": token} if token else {}
+
+
+def _gl_paginate(url: str, token: str, params: dict | None = None, max_pages: int = 20) -> list:
+    """GitLab keeps paging in the X-Next-Page header; stop when it's empty. 404/401 -> []."""
+    out: list = []
+    params = {**(params or {}), "per_page": 100, "page": 1}
+    for _ in range(max_pages):
+        r = httpx.get(url, params=params, headers=_gl_headers(token), timeout=30)
+        if r.status_code in (401, 403, 404):
+            break
+        r.raise_for_status()
+        body = r.json()
+        if not isinstance(body, list) or not body:
+            break
+        out.extend(body)
+        nxt = r.headers.get("x-next-page")
+        if not nxt:
+            break
+        params["page"] = nxt
+    return out
+
+
+class GitLabAdapter:
+    def list_repos(self, owner_url: str, token: str, username=None) -> list[tuple[NormRepo, GitLabHandle]]:
+        api, ns = _gl_parse(owner_url)
+        ns_enc = quote(ns, safe="")
+        seen: dict[int, dict] = {}
+        # A namespace is a group OR a user — try both, dedupe by project id.
+        for path, extra in ((f"/groups/{ns_enc}/projects", {"include_subgroups": "true"}),
+                            (f"/users/{ns_enc}/projects", {})):
+            for p in _gl_paginate(f"{api}{path}", token, extra):
+                seen.setdefault(p["id"], p)
+        out: list[tuple[NormRepo, GitLabHandle]] = []
+        for p in seen.values():
+            out.append((NormRepo(p["path_with_namespace"], p.get("web_url", ""), p.get("default_branch")),
+                        GitLabHandle(api, p["id"], p.get("default_branch"), token)))
+        return out
+
+    def _p(self, h: GitLabHandle) -> str:
+        return f"{h.api}/projects/{h.pid}"
+
+    def extras(self, h: GitLabHandle) -> dict:
+        tags = _gl_paginate(f"{self._p(h)}/repository/tags", h.token, max_pages=5)
+        return {"tags": [t["name"] for t in tags]}
+
+    def branches(self, h: GitLabHandle) -> list[NormBranch]:
+        return [NormBranch(b["name"]) for b in _gl_paginate(f"{self._p(h)}/repository/branches", h.token)]
+
+    def pull_requests(self, h: GitLabHandle) -> list[NormPR]:
+        out = []
+        for m in _gl_paginate(f"{self._p(h)}/merge_requests", h.token, {"state": "all"}):
+            st = m.get("state")
+            out.append(NormPR(
+                number=m["iid"], title=m.get("title"),
+                state="merged" if st == "merged" else ("open" if st == "opened" else st),
+                author=(m.get("author") or {}).get("name"),
+                source_branch=m.get("source_branch"), target_branch=m.get("target_branch"),
+                created_at=_gl_dt(m.get("created_at")), merged_at=_gl_dt(m.get("merged_at")),
+            ))
+        return out
+
+    def commits(self, h: GitLabHandle, branch=None, since=None, max_pages=20) -> list[NormCommit]:
+        params = {}
+        if branch:
+            params["ref_name"] = branch
+        if since:
+            params["since"] = since.isoformat()
+        out = []
+        for c in _gl_paginate(f"{self._p(h)}/repository/commits", h.token, params, max_pages=max_pages or 20):
+            out.append(NormCommit(
+                sha=c["id"], author=c.get("author_name"), author_email=c.get("author_email"),
+                message=c.get("message") or c.get("title"), committed_at=_gl_dt(c.get("created_at")),
+                url=c.get("web_url"), parents=",".join(c.get("parent_ids") or []),
+            ))
+        return out
+
+
+def _gl_dt(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s)
+    except ValueError:
+        return None
+
+
+# --------------------------------------------------------------------------- #
+# Gitea / Codeberg (Gitea API v1 — Codeberg is a hosted Gitea). owner_url =
+# https://codeberg.org/{owner} or a self-hosted host. Auth = token header (public needs none).
+# --------------------------------------------------------------------------- #
+@dataclass
+class GiteaHandle:
+    api: str            # https://{host}/api/v1
+    owner: str
+    repo: str
+    default_branch: str | None
+    token: str
+
+
+def _gt_parse(owner_url: str) -> tuple[str, str]:
+    u = urlparse(owner_url.rstrip("/"))
+    return f"{u.scheme}://{u.netloc}/api/v1", u.path.strip("/")
+
+
+def _gt_headers(token: str) -> dict:
+    return {"Authorization": f"token {token}"} if token else {}
+
+
+def _gt_paginate(url: str, token: str, params: dict | None = None, max_pages: int = 20) -> list:
+    out: list = []
+    params = {**(params or {}), "limit": 50, "page": 1}
+    for _ in range(max_pages):
+        r = httpx.get(url, params=params, headers=_gt_headers(token), timeout=30)
+        if r.status_code in (401, 403, 404):
+            break
+        r.raise_for_status()
+        body = r.json()
+        # Some Gitea list endpoints wrap results under "data" (e.g. pulls); most return a bare list.
+        items = body.get("data") if isinstance(body, dict) else body
+        if not items:
+            break
+        out.extend(items)
+        if len(items) < params["limit"]:
+            break
+        params["page"] += 1
+    return out
+
+
+class GiteaAdapter:
+    def list_repos(self, owner_url: str, token: str, username=None) -> list[tuple[NormRepo, GiteaHandle]]:
+        api, owner = _gt_parse(owner_url)
+        # /users/{owner}/repos covers a user; /orgs/{owner}/repos covers an org — try both.
+        seen: dict[str, dict] = {}
+        for path in (f"/users/{owner}/repos", f"/orgs/{owner}/repos"):
+            for r in _gt_paginate(f"{api}{path}", token):
+                seen.setdefault(r["full_name"], r)
+        out: list[tuple[NormRepo, GiteaHandle]] = []
+        for r in seen.values():
+            o, name = r["full_name"].split("/", 1) if "/" in r["full_name"] else (owner, r["name"])
+            out.append((NormRepo(r["full_name"], r.get("html_url", ""), r.get("default_branch"),
+                                  stars=r.get("stars_count") or 0, forks=r.get("forks_count") or 0,
+                                  language=r.get("language") or None),
+                        GiteaHandle(api, o, name, r.get("default_branch"), token)))
+        return out
+
+    def _r(self, h: GiteaHandle) -> str:
+        return f"{h.api}/repos/{h.owner}/{h.repo}"
+
+    def extras(self, h: GiteaHandle) -> dict:
+        tags = _gt_paginate(f"{self._r(h)}/tags", h.token, max_pages=5)
+        return {"tags": [t["name"] for t in tags]}
+
+    def branches(self, h: GiteaHandle) -> list[NormBranch]:
+        return [NormBranch(b["name"]) for b in _gt_paginate(f"{self._r(h)}/branches", h.token)]
+
+    def pull_requests(self, h: GiteaHandle) -> list[NormPR]:
+        out = []
+        for p in _gt_paginate(f"{self._r(h)}/pulls", h.token, {"state": "all"}):
+            out.append(NormPR(
+                number=p["number"], title=p.get("title"),
+                state="merged" if p.get("merged") else p.get("state"),
+                author=(p.get("user") or {}).get("login") or (p.get("user") or {}).get("username"),
+                source_branch=(p.get("head") or {}).get("ref"), target_branch=(p.get("base") or {}).get("ref"),
+                created_at=_gl_dt(p.get("created_at")), merged_at=_gl_dt(p.get("merged_at")),
+            ))
+        return out
+
+    def commits(self, h: GiteaHandle, branch=None, since=None, max_pages=20) -> list[NormCommit]:
+        params = {"stat": "false", "verification": "false", "files": "false"}
+        if branch:
+            params["sha"] = branch
+        out = []
+        for c in _gt_paginate(f"{self._r(h)}/commits", h.token, params, max_pages=max_pages or 20):
+            commit = c.get("commit") or {}
+            a = commit.get("author") or {}
+            out.append(NormCommit(
+                sha=c["sha"], author=a.get("name"), author_email=a.get("email"),
+                message=commit.get("message"), committed_at=_gl_dt(a.get("date")),
+                url=c.get("html_url"), parents=",".join(p["sha"] for p in c.get("parents", [])),
             ))
         return out

@@ -51,11 +51,15 @@ export const PROVIDERS: ProviderMeta[] = [
     ],
   },
   {
-    id: "gitlab", name: "GitLab", slug: "gitlab", color: "#fc6d26", supported: false,
-    usernameLabel: "username", ownerHint: "https://gitlab.com/<username>",
+    id: "gitlab", name: "GitLab", slug: "gitlab", color: "#fc6d26", supported: true,
+    usernameLabel: "username or group", ownerHint: "https://gitlab.com/<username-or-group>",
     tokenUrl: "https://gitlab.com/-/user_settings/personal_access_tokens",
     scopes: "read_api",
-    steps: ["Preview: adapter coming soon.", "GitLab → Settings → Access tokens → scope read_api."],
+    steps: [
+      "Reads GitLab metadata (projects, branches, MRs, commits) via REST v4 — code is never cloned.",
+      "GitLab → Preferences → Access tokens → create one with the read_api scope.",
+      "‘username’ = your user or group namespace; set owner_url for a self-hosted host.",
+    ],
   },
   {
     id: "bitbucket", name: "Bitbucket", slug: "bitbucket", color: "#0052cc", supported: true,
@@ -70,17 +74,25 @@ export const PROVIDERS: ProviderMeta[] = [
     ],
   },
   {
-    id: "gitea", name: "Gitea", slug: "gitea", color: "#609926", supported: false,
-    usernameLabel: "username", ownerHint: "https://your-gitea/<username>",
-    tokenUrl: "#", scopes: "repo",
-    steps: ["Preview: adapter coming soon.", "Settings → Applications → Generate token.", "Provide the full owner_url for self-hosted instances."],
+    id: "gitea", name: "Gitea", slug: "gitea", color: "#609926", supported: true,
+    usernameLabel: "username or org", ownerHint: "https://your-gitea/<username>",
+    tokenUrl: "#", scopes: "read:repository, read:organization",
+    steps: [
+      "Reads Gitea metadata (repos, branches, PRs, commits) via the API v1 — code is never cloned.",
+      "Settings → Applications → Generate token with read:repository (+ read:organization).",
+      "owner_url is required for self-hosted: your host + user/org, e.g. https://git.acme.com/team.",
+    ],
   },
   {
-    id: "codeberg", name: "Codeberg", slug: "codeberg", color: "#2185d0", supported: false,
-    usernameLabel: "username", ownerHint: "https://codeberg.org/<username>",
+    id: "codeberg", name: "Codeberg", slug: "codeberg", color: "#2185d0", supported: true,
+    usernameLabel: "username or org", ownerHint: "https://codeberg.org/<username>",
     tokenUrl: "https://codeberg.org/user/settings/applications",
-    scopes: "read:repository",
-    steps: ["Preview: adapter coming soon.", "Codeberg is a Gitea instance — same token flow."],
+    scopes: "read:repository, read:organization",
+    steps: [
+      "Codeberg runs Gitea — reads repos, branches, PRs, commits via the API v1.",
+      "Codeberg → Settings → Applications → Generate a token (read:repository, read:organization).",
+      "owner_url defaults to https://codeberg.org/<username>.",
+    ],
   },
 ];
 
