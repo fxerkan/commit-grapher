@@ -8,9 +8,9 @@ Per-platform guides for adding a version-control account. commit-grapher reads *
 | Azure DevOps | ✅ Ready | [azure-devops.md](azure-devops.md) |
 | Jira | ✅ Ready | [jira.md](jira.md) — issues matched to your commits/PRs/branches |
 | Bitbucket | ✅ Ready | [bitbucket.md](bitbucket.md) — API token (app passwords retired) |
-| GitLab | 🔜 Preview | scope `read_api` — settings → Access tokens |
-| Gitea | 🔜 Preview | Settings → Applications → token (`repo`); set full `owner_url` for self-hosted |
-| Codeberg | 🔜 Preview | Same as Gitea (`read:repository`) |
+| GitLab | ✅ Ready | [gitlab.md](gitlab.md) — `read_api` token, user or group |
+| Gitea | ✅ Ready | [gitea.md](gitea.md) — `read:repository` token; set `owner_url` for self-hosted |
+| Codeberg | ✅ Ready | [codeberg.md](codeberg.md) — hosted Gitea, same token flow |
 
 ## Quick start
 1. Open the app (`uvicorn app.main:app --app-dir backend`, then http://localhost:8000).
