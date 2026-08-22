@@ -1,0 +1,15 @@
+[project]
+name = "commit-grapher"
+version = "0.1.0"
+description = "Multi-provider commit/contribution graph aggregator (metadata only)"
+requires-python = ">=3.13"
+dependencies = [
+    "githarbor>=1.0.2",
+    "fastapi>=0.110",
+    "uvicorn[standard]>=0.29",
+    "keyring>=25",
+    "httpx>=0.27",
+]
+
+[tool.setuptools.packages.find]
+include = ["app*"]
