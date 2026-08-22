@@ -40,6 +40,10 @@ export default function FilterPanel({
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
 
+  // Date-range quick presets. Filtering is day-granular, so 1h/1d both resolve to "today".
+  const PRESETS: [string, number | null][] = [
+    ["1h", 0], ["1d", 1], ["1w", 7], ["30d", 30], ["90d", 90], ["1y", 365], ["All", null],
+  ];
   const preset = (days: number | null) => {
     if (!dateRange) return;
     if (days == null) { dateRange.setStart(""); dateRange.setEnd(""); return; }
@@ -57,7 +61,8 @@ export default function FilterPanel({
   }
 
   return (
-    <aside className="filter-panel" style={onWidthChange ? { width, flex: `0 0 ${width}px`, position: "relative" } : undefined}>
+    <aside className="filter-panel"
+      style={onWidthChange ? { width, flex: `0 0 ${width}px`, position: "relative", maxHeight: "100%", overflowY: "auto" } : undefined}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
         <b>{title} {activeCount > 0 && <span className="pill">{activeCount}</span>}</b>
         <button className="btn" style={{ padding: "2px 8px" }} title="collapse" onClick={() => onOpenChange(false)}>◀</button>
@@ -80,8 +85,8 @@ export default function FilterPanel({
               <input type="date" className="cg-input" value={dateRange.start} max={dateRange.end || undefined} onChange={(e) => dateRange.setStart(e.target.value)} />
               <input type="date" className="cg-input" value={dateRange.end} min={dateRange.start || undefined} onChange={(e) => dateRange.setEnd(e.target.value)} />
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
-                {[["30d", 30], ["90d", 90], ["1y", 365], ["All", null]].map(([lbl, d]) => (
-                  <button key={lbl as string} className="chip" onClick={() => preset(d as number | null)}>{lbl}</button>
+                {PRESETS.map(([lbl, d]) => (
+                  <button key={lbl} className="chip" onClick={() => preset(d)}>{lbl}</button>
                 ))}
               </div>
             </div>

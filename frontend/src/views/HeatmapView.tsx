@@ -32,7 +32,17 @@ export default function HeatmapView() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
 
-  useEffect(() => { api.facets().then(setFacets).catch(() => {}); }, []);
+  // Cascading facets: author/tag/repo lists narrow to the current selection.
+  const fkey = JSON.stringify([[...providers], [...orgs], [...projects], [...accounts], [...repos]]);
+  useEffect(() => {
+    api.facets({
+      provider: providers.size === 1 ? String([...providers][0]) : undefined,
+      organizations: orgs.size ? [...orgs].map(String) : undefined,
+      projects: projects.size ? [...projects].map(String) : undefined,
+      account_ids: accounts.size ? [...accounts].map(Number) : undefined,
+      repo_ids: repos.size ? [...repos].map(Number) : undefined,
+    }).then(setFacets).catch(() => {});
+  }, [fkey]);
 
   const repoDimActive = providers.size || orgs.size || projects.size || accounts.size || repos.size || tags.size;
   const effRepos = useMemo(() => (facets?.repos || []).filter((r) =>
@@ -113,11 +123,12 @@ export default function HeatmapView() {
   const accName = (id: number) => facets?.accounts.find((a) => a.id === id)?.display_name || `#${id}`;
   const del = (set: Set<any>, setter: (s: Set<any>) => void, k: any) => { const n = new Set(set); n.delete(k); setter(n); };
 
+  // Order: Provider > Account > Organization > Workspace > Repo > Author > Tag > Date.
   const dims: FilterDim[] = [
     { key: "prov", label: "Provider", options: provOpts, selected: providers, onChange: setProviders, placeholder: "All providers" },
-    { key: "org", label: "Organization", options: orgOpts, selected: orgs, onChange: setOrgs, placeholder: "All orgs" },
-    { key: "proj", label: "Project / Workspace", options: projOpts, selected: projects, onChange: setProjects, placeholder: "All projects" },
     { key: "acc", label: "Account", options: accOpts, selected: accounts, onChange: setAccounts, placeholder: "All accounts" },
+    { key: "org", label: "Organization", options: orgOpts, selected: orgs, onChange: setOrgs, placeholder: "All orgs" },
+    { key: "proj", label: "Workspace", options: projOpts, selected: projects, onChange: setProjects, placeholder: "All workspaces" },
     { key: "repo", label: "Repository", options: repoOpts, selected: repos, onChange: setRepos, placeholder: "All repos" },
     { key: "auth", label: "Author", options: authorOpts, selected: authors, onChange: setAuthors, placeholder: "All authors" },
     { key: "tag", label: "Tag", options: tagOpts, selected: tags, onChange: setTags, placeholder: "All tags" },
@@ -143,7 +154,7 @@ export default function HeatmapView() {
   if (err) return <div style={{ padding: 40, color: "#f85149" }}>Error: {err}</div>;
 
   return (
-    <div style={{ padding: 20 }} className="stats-layout">
+    <div className="stats-layout">
       <FilterPanel dims={dims} open={sidebarOpen} onOpenChange={setSidebarOpen}
         activeCount={chips.length} chips={chips} onClear={clearAll}
         dateRange={{ start, end, setStart, setEnd }} />

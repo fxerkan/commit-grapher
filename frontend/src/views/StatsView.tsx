@@ -64,6 +64,19 @@ function ChartCard({ title, hint, children }: { title: string; hint?: string; ch
     </div>
   );
 }
+// Collapsible dashboard section with a clickable header.
+function Section({ title, open, onToggle, right, children }: { title: string; open: boolean; onToggle: () => void; right?: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <div>
+      <div onClick={onToggle} style={{ cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", gap: 8, marginBottom: open ? 12 : 0 }}>
+        <span style={{ color: "var(--muted)", fontSize: 12, width: 12, display: "inline-block" }}>{open ? "▼" : "▶"}</span>
+        <b style={{ fontSize: 16 }}>{title}</b>
+        {right}
+      </div>
+      {open && children}
+    </div>
+  );
+}
 
 export default function StatsView() {
   const [facets, setFacets] = useState<Facets | null>(null);
@@ -71,6 +84,8 @@ export default function StatsView() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [sec, setSec] = useState<Record<string, boolean>>({ kpi: true, facts: true, repo: true, charts: true });
+  const toggle = (k: string) => setSec((v) => ({ ...v, [k]: !v[k] }));
 
   // Filter dimensions + date range.
   const [providers, setProviders] = useState<Set<any>>(S([]));
@@ -83,7 +98,18 @@ export default function StatsView() {
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
 
-  useEffect(() => { api.facets().then(setFacets).catch(() => {}); }, []);
+  // Cascading facets: the author/tag/repo option lists narrow to the current selection
+  // (e.g. pick one repo → the Author dropdown only lists that repo's authors).
+  const fkey = JSON.stringify([[...providers], [...orgs], [...projects], [...accounts], [...repos]]);
+  useEffect(() => {
+    api.facets({
+      provider: providers.size === 1 ? String([...providers][0]) : undefined,
+      organizations: orgs.size ? [...orgs].map(String) : undefined,
+      projects: projects.size ? [...projects].map(String) : undefined,
+      account_ids: accounts.size ? [...accounts].map(Number) : undefined,
+      repo_ids: repos.size ? [...repos].map(Number) : undefined,
+    }).then(setFacets).catch(() => {});
+  }, [fkey]);
 
   // Resolve all repo-scoping dimensions (incl. tags) to a concrete repo-id list.
   const repoDimActive = providers.size || orgs.size || projects.size || accounts.size || repos.size || tags.size;
@@ -131,11 +157,12 @@ export default function StatsView() {
   const del = (set: Set<any>, setter: (s: Set<any>) => void, k: any) => { const n = new Set(set); n.delete(k); setter(n); };
   const add = (set: Set<any>, setter: (s: Set<any>) => void, k: any) => { const n = new Set(set); n.add(k); setter(n); };
 
+  // Order: Provider > Account > Organization > Workspace > Repo > Author > Tag > Date.
   const dims: FilterDim[] = [
     { key: "prov", label: "Provider", options: provOpts, selected: providers, onChange: setProviders, placeholder: "All providers" },
-    { key: "org", label: "Organization", options: orgOpts, selected: orgs, onChange: setOrgs, placeholder: "All orgs" },
-    { key: "proj", label: "Project / Workspace", options: projOpts, selected: projects, onChange: setProjects, placeholder: "All projects" },
     { key: "acc", label: "Account", options: accOpts, selected: accounts, onChange: setAccounts, placeholder: "All accounts" },
+    { key: "org", label: "Organization", options: orgOpts, selected: orgs, onChange: setOrgs, placeholder: "All orgs" },
+    { key: "proj", label: "Workspace", options: projOpts, selected: projects, onChange: setProjects, placeholder: "All workspaces" },
     { key: "repo", label: "Repository", options: repoOpts, selected: repos, onChange: setRepos, placeholder: "All repos" },
     { key: "auth", label: "Author", options: authorOpts, selected: authors, onChange: setAuthors, placeholder: "All authors" },
     { key: "tag", label: "Tag", options: tagOpts, selected: tags, onChange: setTags, placeholder: "All tags" },
@@ -218,7 +245,7 @@ export default function StatsView() {
   const hasRepoStats = rs && Object.values(rs).some((v) => v > 0);
 
   return (
-    <div style={{ padding: 20 }} className="stats-layout">
+    <div className="stats-layout">
       <FilterPanel dims={dims} open={sidebarOpen} onOpenChange={setSidebarOpen}
         activeCount={chips.length} chips={chips} onClear={clearAll}
         dateRange={{ start, end, setStart, setEnd }} />
@@ -226,21 +253,22 @@ export default function StatsView() {
       <div className="stats-main">
         {!s || !s.totals ? <div style={{ padding: 40, color: "var(--muted)" }}>Loading…</div> : (
           <div className={loading ? "stats-loading" : undefined} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
-            {/* KPI hero row */}
-            <div className="kpi-grid">
-              <Kpi num={t!.commits.toLocaleString()} label="Commits" icon="🧬" />
-              <Kpi num={t!.repos.toLocaleString()} label="Repositories" icon="📦" />
-              <Kpi num={t!.authors.toLocaleString()} label="Authors" icon="🧑‍💻" />
-              <Kpi num={t!.prs.toLocaleString()} label="Pull Requests" icon="🔀" />
-              <Kpi num={t!.active_days.toLocaleString()} label="Active Days" icon="📅" />
-              <Kpi num={`${t!.streak}🔥`} label="Longest Streak" icon="⚡" />
-            </div>
+            <Section title="KPI Cards" open={sec.kpi} onToggle={() => toggle("kpi")}>
+              <div className="kpi-grid">
+                <Kpi num={t!.commits.toLocaleString()} label="Commits" icon="🧬" />
+                <Kpi num={t!.repos.toLocaleString()} label="Repositories" icon="📦" />
+                <Kpi num={t!.authors.toLocaleString()} label="Authors" icon="🧑‍💻" />
+                <Kpi num={t!.prs.toLocaleString()} label="Pull Requests" icon="🔀" />
+                <Kpi num={t!.active_days.toLocaleString()} label="Active Days" icon="📅" />
+                <Kpi num={`${t!.streak}🔥`} label="Longest Streak" icon="⚡" />
+              </div>
+            </Section>
 
             {t!.commits === 0 ? (
               <div className="card" style={{ color: "var(--muted)" }}>No commits match these filters. Loosen the filters or widen the date range.</div>
             ) : (
               <>
-                {/* Fun deep-dive facts (3 columns × 2 rows) */}
+                <Section title="Fun Facts" open={sec.facts} onToggle={() => toggle("facts")}>
                 <div className="facts-grid">
                   <Fact emoji="📜" title="The Essay — longest commit message">
                     {f?.longest_commit ? <>
@@ -290,12 +318,10 @@ export default function StatsView() {
                     <div style={{ color: "var(--muted)", marginTop: 6 }}>Weekend vs weekday? See the chart below.</div>
                   </Fact>
                 </div>
+                </Section>
 
-                {/* Repository stats */}
-                <div style={{ display: "flex", alignItems: "baseline", gap: 10 }}>
-                  <b style={{ fontSize: 16 }}>Repository stats</b>
-                  {!hasRepoStats && <span style={{ fontSize: 12, color: "var(--muted)" }}>— re-sync accounts to populate stars, forks, releases, tags…</span>}
-                </div>
+                <Section title="Repository Stats" open={sec.repo} onToggle={() => toggle("repo")}
+                  right={!hasRepoStats ? <span style={{ fontSize: 12, color: "var(--muted)" }}>— re-sync accounts to populate stars, forks, releases, tags…</span> : undefined}>
                 {hasRepoStats && (
                   <div className="kpi-grid">
                     <Kpi num={fmt(rs!.stars)} label="Stars" icon="⭐" />
@@ -310,8 +336,9 @@ export default function StatsView() {
                     {rs!.watchers > 0 && <Kpi num={fmt(rs!.watchers)} label="Watchers" icon="👀" />}
                   </div>
                 )}
+                </Section>
 
-                {/* Charts grid */}
+                <Section title="Dashboard Charts" open={sec.charts} onToggle={() => toggle("charts")}>
                 <div className="charts-grid">
                   <ChartCard title="Commits over time"><EChart option={timeline} /></ChartCard>
                   <ChartCard title="Top repositories" hint="click to drill in">
@@ -334,6 +361,7 @@ export default function StatsView() {
                     </ChartCard>
                   )}
                 </div>
+                </Section>
               </>
             )}
           </div>
