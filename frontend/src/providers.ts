@@ -58,11 +58,16 @@ export const PROVIDERS: ProviderMeta[] = [
     steps: ["Preview: adapter coming soon.", "GitLab → Settings → Access tokens → scope read_api."],
   },
   {
-    id: "bitbucket", name: "Bitbucket", slug: "bitbucket", color: "#0052cc", supported: false,
-    usernameLabel: "workspace", ownerHint: "https://bitbucket.org/<workspace>",
-    tokenUrl: "https://bitbucket.org/account/settings/app-passwords/",
+    id: "bitbucket", name: "Bitbucket", slug: "bitbucket", color: "#0052cc", supported: true,
+    usernameLabel: "workspace (or login)", ownerHint: "https://bitbucket.org/<workspace>",
+    tokenUrl: "https://id.atlassian.com/manage-profile/security/api-tokens",
     scopes: "Repositories: Read",
-    steps: ["Preview: adapter coming soon.", "Create an App password with Repositories: Read."],
+    steps: [
+      "Reads Bitbucket Cloud metadata (repos, branches, PRs, commits) via REST v2 — code is never cloned.",
+      "Create an Atlassian API token at id.atlassian.com → Security → API tokens (app passwords are deprecated).",
+      "‘username’ = your workspace id (e.g. acme) for a personal workspace, or your login for an org workspace.",
+      "owner_url defaults to https://bitbucket.org/<workspace>; set it if your login differs from the workspace.",
+    ],
   },
   {
     id: "gitea", name: "Gitea", slug: "gitea", color: "#609926", supported: false,

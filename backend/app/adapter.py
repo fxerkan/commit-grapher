@@ -79,6 +79,8 @@ def get_adapter(provider: str):
         return AzureDevOpsAdapter()
     if provider == "jira":
         return JiraAdapter()
+    if provider == "bitbucket":
+        return BitbucketAdapter()
     raise ValueError(f"no adapter for provider '{provider}' yet")
 
 
@@ -193,7 +195,7 @@ def _docker_stats(full_name: str, topics: tuple[str, ...]) -> dict:
 
 
 class GitHubAdapter:
-    def list_repos(self, owner_url: str, token: str) -> list[tuple[NormRepo, GitHubHandle]]:
+    def list_repos(self, owner_url: str, token: str, username=None) -> list[tuple[NormRepo, GitHubHandle]]:
         # Authenticated user's repos (owner + collaborator + org member).
         repos = _gh_paginate("/user/repos", token, {"affiliation": "owner,collaborator,organization_member"})
         # Also enumerate each org the user belongs to (catches org repos like datapiai/finevertech
@@ -310,7 +312,7 @@ def _az_dt(s: str | None) -> datetime | None:
 
 
 class AzureDevOpsAdapter:
-    def list_repos(self, owner_url: str, token: str) -> list[tuple[NormRepo, AzureHandle]]:
+    def list_repos(self, owner_url: str, token: str, username=None) -> list[tuple[NormRepo, AzureHandle]]:
         org_url = owner_url.rstrip("/")  # https://dev.azure.com/{org}
         data = _az_get(f"{org_url}/_apis/git/repositories", token, **{"api-version": "7.1"})
         out: list[tuple[NormRepo, AzureHandle]] = []
@@ -453,4 +455,114 @@ class JiraAdapter:
             next_token = data.get("nextPageToken")
             if data.get("isLast") or not next_token or not issues:
                 break
+        return out
+
+
+# --------------------------------------------------------------------------- #
+# Bitbucket Cloud (direct REST v2). handle carries workspace/slug/token/auth-user.
+# Auth = HTTP Basic(login, secret) — works identically for an app password or the
+# newer Atlassian API token (the login is a username or the account email).
+# owner_url = https://bitbucket.org/{workspace}; account.username = the Basic login.
+# ponytail: assumes login can read the workspace's repos (true for a personal workspace
+# where login == workspace). For an org workspace with a distinct login, set username to
+# that login and owner_url to the workspace.
+# --------------------------------------------------------------------------- #
+BB = "https://api.bitbucket.org/2.0"
+_BB_AUTHOR = re.compile(r"^\s*(?P<name>.*?)\s*<(?P<email>[^>]*)>\s*$")
+
+
+@dataclass
+class BitbucketHandle:
+    workspace: str
+    slug: str
+    default_branch: str | None
+    token: str
+    auth_user: str
+
+
+def _bb_ws(owner_url: str) -> str:
+    return owner_url.rstrip("/").split("/")[-1]  # .../{workspace}
+
+
+def _bb_paginate(url: str, auth: tuple[str, str], params: dict | None = None, max_pages: int = 50) -> list:
+    """Follow Bitbucket's `next` cursor (absolute URLs) and concat the `values` arrays."""
+    out: list = []
+    for _ in range(max_pages):
+        r = httpx.get(url, params=params, auth=auth, timeout=30)
+        r.raise_for_status()
+        data = r.json()
+        out.extend(data.get("values", []))
+        url = data.get("next")
+        params = None  # the `next` URL already carries paging params
+        if not url:
+            break
+    return out
+
+
+def _bb_dt(s: str | None) -> datetime | None:
+    if not s:
+        return None
+    try:
+        return datetime.fromisoformat(s.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+class BitbucketAdapter:
+    def list_repos(self, owner_url: str, token: str, username=None) -> list[tuple[NormRepo, BitbucketHandle]]:
+        ws = _bb_ws(owner_url)
+        auth_user = username or ws
+        auth = (auth_user, token)
+        out: list[tuple[NormRepo, BitbucketHandle]] = []
+        for r in _bb_paginate(f"{BB}/repositories/{ws}", auth, {"pagelen": 100, "sort": "-updated_on"}):
+            default = (r.get("mainbranch") or {}).get("name")
+            html = ((r.get("links") or {}).get("html") or {}).get("href", "")
+            norm = NormRepo(r["full_name"], html, default, language=r.get("language") or None)
+            out.append((norm, BitbucketHandle(ws, r["slug"], default, token, auth_user)))
+        return out
+
+    def _auth(self, h: BitbucketHandle) -> tuple[str, str]:
+        return (h.auth_user, h.token)
+
+    def _repo(self, h: BitbucketHandle) -> str:
+        return f"{BB}/repositories/{h.workspace}/{h.slug}"
+
+    def extras(self, h: BitbucketHandle) -> dict:
+        tags = _bb_paginate(f"{self._repo(h)}/refs/tags", self._auth(h), {"pagelen": 100}, max_pages=5)
+        return {"tags": [t["name"] for t in tags]}
+
+    def branches(self, h: BitbucketHandle) -> list[NormBranch]:
+        return [NormBranch(b["name"]) for b in
+                _bb_paginate(f"{self._repo(h)}/refs/branches", self._auth(h), {"pagelen": 100})]
+
+    def pull_requests(self, h: BitbucketHandle) -> list[NormPR]:
+        out = []
+        for p in _bb_paginate(f"{self._repo(h)}/pullrequests", self._auth(h),
+                              {"pagelen": 50, "state": ["MERGED", "OPEN", "DECLINED", "SUPERSEDED"]}):
+            state = (p.get("state") or "").lower()
+            out.append(NormPR(
+                number=p["id"], title=p.get("title"), state="merged" if state == "merged" else state,
+                author=(p.get("author") or {}).get("display_name"),
+                source_branch=((p.get("source") or {}).get("branch") or {}).get("name"),
+                target_branch=((p.get("destination") or {}).get("branch") or {}).get("name"),
+                created_at=_bb_dt(p.get("created_on")),
+                merged_at=_bb_dt(p.get("updated_on")) if state == "merged" else None,
+            ))
+        return out
+
+    def commits(self, h: BitbucketHandle, branch=None, since=None, max_pages=5) -> list[NormCommit]:
+        # /commits/{branch} walks first-parent history from that ref; /commits = default branch.
+        url = f"{self._repo(h)}/commits/{branch}" if branch else f"{self._repo(h)}/commits"
+        out = []
+        for c in _bb_paginate(url, self._auth(h), {"pagelen": 100}, max_pages=max_pages or 5):
+            raw = (c.get("author") or {}).get("raw", "") or ""
+            m = _BB_AUTHOR.match(raw)
+            name = (m.group("name") if m else raw) or (c.get("author") or {}).get("user", {}).get("display_name")
+            email = m.group("email") if m else None
+            out.append(NormCommit(
+                sha=c["hash"], author=name or None, author_email=email,
+                message=c.get("message"), committed_at=_bb_dt(c.get("date")),
+                url=((c.get("links") or {}).get("html") or {}).get("href"),
+                parents=",".join(p["hash"] for p in c.get("parents", [])),
+            ))
         return out

@@ -39,7 +39,7 @@ def sync_account(account_id: int, adapter=None) -> dict:
     counts = {"repos": 0, "branches": 0, "pull_requests": 0, "commits": 0, "tags": 0,
               "work_items": 0, "errors": []}
     projects_seen: set[str] = set()  # project prefixes of crawled repos → scope work-item fetch
-    for norm_repo, repo_handle in adapter.list_repos(acc["owner_url"], token):
+    for norm_repo, repo_handle in adapter.list_repos(acc["owner_url"], token, username=acc["username"]):
         projects_seen.add(norm_repo.full_name.split("/", 1)[0])
         conn.execute(
             """INSERT INTO repos(account_id, provider, full_name, url, default_branch, last_synced_at,
