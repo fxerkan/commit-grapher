@@ -90,17 +90,33 @@ CREATE TABLE IF NOT EXISTS work_item_links (
     method       TEXT             -- key (exact issue-key hit) | fuzzy (title similarity)
 );
 CREATE INDEX IF NOT EXISTS idx_wil_wi ON work_item_links(work_item_id);
+CREATE TABLE IF NOT EXISTS achievements (
+    id         INTEGER PRIMARY KEY,
+    account_id INTEGER NOT NULL REFERENCES accounts(id) ON DELETE CASCADE,
+    username   TEXT NOT NULL,
+    slug       TEXT NOT NULL,     -- pull-shark / starstruck / yolo / quickdraw ...
+    name       TEXT,
+    tier       INTEGER,           -- default-tier multiplier (x2, x3 …); 1 if none
+    image_url  TEXT,
+    earned_at  TEXT,
+    UNIQUE(account_id, slug)
+);
 """
 
 # Columns added after initial release; ALTER on existing DBs (sqlite has no ADD COLUMN IF NOT EXISTS).
 _MIGRATIONS = {
-    "commits": {"url": "TEXT", "parents": "TEXT"},
+    # author_login/avatar = GitHub identity for contributor avatars; ai_agent/ai_role = AI attribution.
+    "commits": {"url": "TEXT", "parents": "TEXT", "author_login": "TEXT",
+                "author_avatar": "TEXT", "ai_agent": "TEXT", "ai_role": "TEXT"},
     "accounts": {"display_name": "TEXT"},
     # Per-repo summary stats fetched during sync (see crawler/adapter). Null = not yet synced.
+    # languages = JSON {lang: bytes}; topics = comma-separated (library/framework facet);
+    # contrib_stats = JSON {login: {commits, additions, deletions}}.
     "repos": {"stars": "INTEGER", "forks": "INTEGER", "watchers": "INTEGER",
               "open_issues": "INTEGER", "language": "TEXT", "releases": "INTEGER",
               "downloads": "INTEGER", "contributors": "INTEGER", "builds": "INTEGER",
-              "docker_pulls": "INTEGER", "npm_downloads": "INTEGER"},
+              "docker_pulls": "INTEGER", "npm_downloads": "INTEGER",
+              "languages": "TEXT", "topics": "TEXT", "contrib_stats": "TEXT"},
 }
 
 

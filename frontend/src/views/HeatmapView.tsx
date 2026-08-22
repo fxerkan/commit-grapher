@@ -29,6 +29,9 @@ export default function HeatmapView() {
   const [repos, setRepos] = useState<Set<any>>(S([]));
   const [authors, setAuthors] = useState<Set<any>>(S([]));
   const [tags, setTags] = useState<Set<any>>(S([]));
+  const [languages, setLanguages] = useState<Set<any>>(S([]));
+  const [libraries, setLibraries] = useState<Set<any>>(S([]));
+  const [aiAgents, setAiAgents] = useState<Set<any>>(S([]));
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
 
@@ -44,21 +47,24 @@ export default function HeatmapView() {
     }).then(setFacets).catch(() => {});
   }, [fkey]);
 
-  const repoDimActive = providers.size || orgs.size || projects.size || accounts.size || repos.size || tags.size;
+  const repoDimActive = providers.size || orgs.size || projects.size || accounts.size || repos.size || tags.size || languages.size || libraries.size;
   const effRepos = useMemo(() => (facets?.repos || []).filter((r) =>
     (!providers.size || providers.has(r.provider)) &&
     (!orgs.size || orgs.has(r.organization)) &&
     (!projects.size || projects.has(r.project)) &&
     (!accounts.size || accounts.has(r.account_id)) &&
     (!repos.size || repos.has(r.id)) &&
-    (!tags.size || (r.tags || []).some((t) => tags.has(t)))
-  ), [facets, providers, orgs, projects, accounts, repos, tags]);
+    (!tags.size || (r.tags || []).some((t) => tags.has(t))) &&
+    (!languages.size || (r.languages || []).some((l) => languages.has(l))) &&
+    (!libraries.size || (r.libraries || []).some((l) => libraries.has(l)))
+  ), [facets, providers, orgs, projects, accounts, repos, tags, languages, libraries]);
   const repoIds = repoDimActive ? (effRepos.length ? effRepos.map((r) => r.id) : [-1]) : undefined;
   const authorList = [...authors] as string[];
-  const qkey = JSON.stringify([repoIds, authorList.sort(), start, end]);
+  const aiList = aiAgents.size ? [...aiAgents].map(String) : undefined;
+  const qkey = JSON.stringify([repoIds, authorList.sort(), [...aiAgents].sort(), start, end]);
 
   useEffect(() => {
-    api.heatmap({ repo_ids: repoIds, authors: authorList, start: start || undefined, end: end || undefined })
+    api.heatmap({ repo_ids: repoIds, authors: authorList, ai_agents: aiList, start: start || undefined, end: end || undefined })
       .then(setCounts).catch((e) => setErr(e.message));
   }, [qkey]);
 
@@ -75,7 +81,7 @@ export default function HeatmapView() {
   useEffect(() => {
     if (!day) { setDayCommits(null); return; }
     setDayCommits(null);
-    api.commits({ date: day, repo_ids: repoIds, authors: authorList, start: start || undefined, end: end || undefined, limit: 1000 })
+    api.commits({ date: day, repo_ids: repoIds, authors: authorList, ai_agents: aiList, start: start || undefined, end: end || undefined, limit: 1000 })
       .then(setDayCommits).catch(() => setDayCommits([]));
   }, [day, qkey]);
 
@@ -118,6 +124,9 @@ export default function HeatmapView() {
   const repoOpts: Opt[] = scopedRepos.map((r) => ({ key: r.id, label: r.full_name, badge: r.provider }));
   const authorOpts: Opt[] = (facets?.authors || []).map((a) => ({ key: a.name, label: a.name, count: a.count, badge: a.bot ? "bot" : undefined, badgeColor: "#6e40c9" }));
   const tagOpts: Opt[] = (facets?.tags || []).map((t) => ({ key: t.name, label: t.name, count: t.count }));
+  const langOpts: Opt[] = (facets?.languages || []).map((l) => ({ key: l.name, label: l.name, count: l.count }));
+  const libOpts: Opt[] = (facets?.libraries || []).map((l) => ({ key: l.name, label: l.name, count: l.count }));
+  const aiOpts: Opt[] = (facets?.ai_agents || []).map((a) => ({ key: a.name, label: a.name, count: a.count, badge: "AI", badgeColor: "#6e40c9" }));
 
   const repoName = (id: number) => facets?.repos.find((r) => r.id === id)?.full_name || `#${id}`;
   const accName = (id: number) => facets?.accounts.find((a) => a.id === id)?.display_name || `#${id}`;
@@ -131,6 +140,9 @@ export default function HeatmapView() {
     { key: "proj", label: "Workspace", options: projOpts, selected: projects, onChange: setProjects, placeholder: "All workspaces" },
     { key: "repo", label: "Repository", options: repoOpts, selected: repos, onChange: setRepos, placeholder: "All repos" },
     { key: "auth", label: "Author", options: authorOpts, selected: authors, onChange: setAuthors, placeholder: "All authors" },
+    { key: "lang", label: "Language", options: langOpts, selected: languages, onChange: setLanguages, placeholder: "All languages" },
+    { key: "lib", label: "Library / Framework", options: libOpts, selected: libraries, onChange: setLibraries, placeholder: "All libraries" },
+    { key: "ai", label: "AI Agent", options: aiOpts, selected: aiAgents, onChange: setAiAgents, placeholder: "All agents" },
     { key: "tag", label: "Tag", options: tagOpts, selected: tags, onChange: setTags, placeholder: "All tags" },
   ];
   const chips: { label: string; rm: () => void }[] = [
@@ -140,10 +152,13 @@ export default function HeatmapView() {
     ...[...accounts].map((k) => ({ label: `account: ${accName(k)}`, rm: () => del(accounts, setAccounts, k) })),
     ...[...repos].map((k) => ({ label: `repo: ${repoName(k)}`, rm: () => del(repos, setRepos, k) })),
     ...[...authors].map((k) => ({ label: `author: ${k}`, rm: () => del(authors, setAuthors, k) })),
+    ...[...languages].map((k) => ({ label: `lang: ${k}`, rm: () => del(languages, setLanguages, k) })),
+    ...[...libraries].map((k) => ({ label: `lib: ${k}`, rm: () => del(libraries, setLibraries, k) })),
+    ...[...aiAgents].map((k) => ({ label: `AI: ${k}`, rm: () => del(aiAgents, setAiAgents, k) })),
     ...[...tags].map((k) => ({ label: `tag: ${k}`, rm: () => del(tags, setTags, k) })),
     ...(start || end ? [{ label: `date: ${start || "…"} → ${end || "…"}`, rm: () => { setStart(""); setEnd(""); } }] : []),
   ];
-  const clearAll = () => { setProviders(S([])); setOrgs(S([])); setProjects(S([])); setAccounts(S([])); setRepos(S([])); setAuthors(S([])); setTags(S([])); setStart(""); setEnd(""); };
+  const clearAll = () => { setProviders(S([])); setOrgs(S([])); setProjects(S([])); setAccounts(S([])); setRepos(S([])); setAuthors(S([])); setTags(S([])); setLanguages(S([])); setLibraries(S([])); setAiAgents(S([])); setStart(""); setEnd(""); };
 
   const byRepo = useMemo(() => {
     const g: Record<string, CommitRow[]> = {};

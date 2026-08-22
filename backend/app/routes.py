@@ -1,11 +1,13 @@
 from __future__ import annotations
 
+import json
+from collections import Counter
 from datetime import datetime, timezone
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel
 
-from . import charts, config, crawler, db, graph, match, oauth
+from . import charts, config, crawler, db, graph, graphql_api, match, oauth
 
 router = APIRouter(prefix="/api")
 
@@ -119,27 +121,49 @@ def oauth_poll(body: OAuthPoll):
         raise HTTPException(502, f"{type(e).__name__}: {e}")
 
 
+def _pipe(s: str | None) -> list[str]:
+    """Parse a `||`-separated multi-select param into a clean list."""
+    return [x for x in (s.split("||") if s else []) if x]
+
+
 @router.get("/graph")
 def get_graph(provider: str | None = None, repo_id: int | None = None, authors: str | None = None,
               repo_ids: str | None = None, projects: str | None = None,
-              organizations: str | None = None, account_ids: str | None = None):
-    author_list = [a for a in (authors.split("||") if authors else []) if a]
+              organizations: str | None = None, account_ids: str | None = None,
+              languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None):
+    author_list = _pipe(authors)
     rid_list = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
-    proj_list = [p for p in (projects.split("||") if projects else []) if p]
-    org_list = [o for o in (organizations.split("||") if organizations else []) if o]
+    proj_list = _pipe(projects)
+    org_list = _pipe(organizations)
     acc_list = [int(x) for x in account_ids.split(",") if x] if account_ids else None
     return graph.build(provider=provider, focus_repo=repo_id, authors=author_list,
                        repo_ids=rid_list, projects=proj_list or None,
-                       organizations=org_list or None, account_ids=acc_list)
+                       organizations=org_list or None, account_ids=acc_list,
+                       languages=_pipe(languages) or None, libraries=_pipe(libraries) or None,
+                       ai_agents=_pipe(ai_agents) or None)
+
+
+class GraphQLIn(BaseModel):
+    query: str
+    variables: dict | None = None
+    provider: str | None = None
+
+
+@router.post("/graphql")
+def run_graphql(body: GraphQLIn):
+    """Execute a GraphQL query over the network graph (nodes/edges). See graphql_api.SDL."""
+    return graphql_api.execute(body.query, body.variables, body.provider)
 
 
 @router.get("/heatmap")
 def get_heatmap(providers: str | None = None, repo_ids: str | None = None,
-                authors: str | None = None, start: str | None = None, end: str | None = None):
+                authors: str | None = None, start: str | None = None, end: str | None = None,
+                languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None):
     plist = [p for p in (providers.split(",") if providers else []) if p]
     rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
-    alist = [a for a in (authors.split("||") if authors else []) if a]
-    return charts.heatmap(plist or None, rids, alist or None, start, end)
+    alist = _pipe(authors)
+    return charts.heatmap(plist or None, rids, alist or None, start, end,
+                          _pipe(languages) or None, _pipe(libraries) or None, _pipe(ai_agents) or None)
 
 
 @router.get("/gitgraph")
@@ -149,11 +173,13 @@ def get_gitgraph(repo_id: int, limit: int = 200):
 
 @router.get("/charts")
 def get_charts(providers: str | None = None, repo_ids: str | None = None,
-               authors: str | None = None, start: str | None = None, end: str | None = None):
+               authors: str | None = None, start: str | None = None, end: str | None = None,
+               languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None):
     plist = [p for p in (providers.split(",") if providers else []) if p]
     rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
-    alist = [a for a in (authors.split("||") if authors else []) if a]
-    return charts.stats(plist or None, rids, alist or None, start, end)
+    alist = _pipe(authors)
+    return charts.stats(plist or None, rids, alist or None, start, end,
+                        _pipe(languages) or None, _pipe(libraries) or None, _pipe(ai_agents) or None)
 
 
 @router.get("/export")
@@ -171,11 +197,13 @@ def import_data(payload: dict):
 
 @router.get("/commits")
 def get_commits(date: str | None = None, providers: str | None = None, repo_ids: str | None = None,
-                authors: str | None = None, start: str | None = None, end: str | None = None, limit: int = 500):
+                authors: str | None = None, start: str | None = None, end: str | None = None, limit: int = 500,
+                languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None):
     plist = [p for p in (providers.split(",") if providers else []) if p]
     rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
-    alist = [a for a in (authors.split("||") if authors else []) if a]
-    return charts.commits_query(date, plist or None, rids, alist or None, start, end, limit)
+    alist = _pipe(authors)
+    return charts.commits_query(date, plist or None, rids, alist or None, start, end, limit,
+                                _pipe(languages) or None, _pipe(libraries) or None, _pipe(ai_agents) or None)
 
 
 import re as _re
@@ -202,15 +230,20 @@ def get_facets(provider: str | None = None, projects: str | None = None, repo_id
         repo_tags.setdefault(r["repo_id"], []).append(r["name"])
 
     all_repos, projects_map, orgs_map = [], {}, {}
-    for r in conn.execute("SELECT id, account_id, full_name, provider FROM repos ORDER BY full_name"):
+    for r in conn.execute("SELECT id, account_id, full_name, provider, languages, topics FROM repos ORDER BY full_name"):
         proj = r["full_name"].split("/", 1)[0] if "/" in r["full_name"] else r["full_name"]
         short = r["full_name"].split("/", 1)[1] if "/" in r["full_name"] else r["full_name"]
         acc = acc_by_id.get(r["account_id"], {})
         org = acc.get("username") if r["provider"] == "azure" else proj  # azure org / github owner
         projects_map[proj] = r["provider"]; orgs_map[org] = r["provider"]
+        try:
+            langs = list(json.loads(r["languages"] or "{}").keys())
+        except (ValueError, TypeError):
+            langs = []
         all_repos.append({"id": r["id"], "account_id": r["account_id"], "full_name": r["full_name"],
                           "provider": r["provider"], "project": proj, "repo": short, "organization": org,
-                          "tags": repo_tags.get(r["id"], [])})
+                          "tags": repo_tags.get(r["id"], []), "languages": langs,
+                          "libraries": [t for t in (r["topics"] or "").split(",") if t]})
 
     def in_scope(r, use_repo_ids=True):
         return ((not provider or r["provider"] == provider)
@@ -230,12 +263,24 @@ def get_facets(provider: str | None = None, projects: str | None = None, repo_id
         "GROUP BY author ORDER BY n DESC", scoped_ids)]
     tags = [{"name": r["name"], "count": r["n"]} for r in conn.execute(
         f"SELECT name, COUNT(*) n FROM tags WHERE repo_id IN ({ph}) GROUP BY name ORDER BY n DESC", scoped_ids)]
+    ai_agents = [{"name": r["ai_agent"], "count": r["n"]} for r in conn.execute(
+        f"SELECT ai_agent, COUNT(*) n FROM commits WHERE ai_agent IS NOT NULL AND repo_id IN ({ph}) "
+        "GROUP BY ai_agent ORDER BY n DESC", scoped_ids)]
+    # Language/library facets = repo counts over the in-scope repos (cascades with the other dims).
+    lang_ct, lib_ct = Counter(), Counter()
+    for r in all_repos:
+        if not in_scope(r):
+            continue
+        lang_ct.update(r["languages"]); lib_ct.update(r["libraries"])
+    languages = [{"name": k, "count": v} for k, v in lang_ct.most_common()]
+    libraries = [{"name": k, "count": v} for k, v in lib_ct.most_common()]
     conn.close()
     return {"providers": providers,
             "organizations": [{"name": k, "provider": v} for k, v in sorted(orgs_map.items())],
             "projects": [{"name": k, "provider": v} for k, v in sorted(projects_map.items())],
             "repos": [r for r in all_repos if in_scope(r, use_repo_ids=False)],
             "branches": branches, "prs": prs, "authors": authors, "tags": tags,
+            "languages": languages, "libraries": libraries, "ai_agents": ai_agents,
             "accounts": [{"id": a["id"], "provider": a["provider"], "username": a["username"],
                           "display_name": a["display_name"] or a["username"]} for a in accounts],
             "account_names": [a["username"] for a in accounts]}
@@ -252,6 +297,37 @@ def rename_account(account_id: int, body: RenameIn):
     conn.commit()
     conn.close()
     return {"ok": True}
+
+
+@router.get("/contributors")
+def get_contributors(providers: str | None = None, repo_ids: str | None = None,
+                     start: str | None = None, end: str | None = None,
+                     languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None):
+    plist = [p for p in (providers.split(",") if providers else []) if p]
+    rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
+    return charts.contributors(plist or None, rids, start, end,
+                               _pipe(languages) or None, _pipe(libraries) or None, _pipe(ai_agents) or None)
+
+
+@router.get("/contributors/detail")
+def get_contributor_detail(login: str | None = None, repo_id: int | None = None,
+                           providers: str | None = None, repo_ids: str | None = None,
+                           start: str | None = None, end: str | None = None,
+                           languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None):
+    plist = [p for p in (providers.split(",") if providers else []) if p]
+    rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
+    return charts.contributor_detail(login, repo_id, plist or None, rids, start, end,
+                                     _pipe(languages) or None, _pipe(libraries) or None, _pipe(ai_agents) or None)
+
+
+@router.get("/achievements")
+def get_achievements():
+    conn = db.connect()
+    rows = conn.execute(
+        "SELECT account_id, username, slug, name, tier, image_url FROM achievements ORDER BY account_id, tier DESC, slug"
+    ).fetchall()
+    conn.close()
+    return [dict(r) for r in rows]
 
 
 @router.get("/summary")

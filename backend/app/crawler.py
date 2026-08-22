@@ -6,9 +6,10 @@
 """
 from __future__ import annotations
 
+import json
 from datetime import datetime, timezone
 
-from . import db
+from . import achievements, ai, db
 from .adapter import get_adapter
 
 
@@ -37,23 +38,28 @@ def sync_account(account_id: int, adapter=None) -> dict:
         raise ValueError("no token stored for account")
 
     counts = {"repos": 0, "branches": 0, "pull_requests": 0, "commits": 0, "tags": 0,
-              "work_items": 0, "errors": []}
+              "work_items": 0, "achievements": 0, "errors": []}
     projects_seen: set[str] = set()  # project prefixes of crawled repos → scope work-item fetch
     for norm_repo, repo_handle in adapter.list_repos(acc["owner_url"], token, username=acc["username"]):
         projects_seen.add(norm_repo.full_name.split("/", 1)[0])
+        # topics feed the Library/Framework facet; languages fallback = the primary language
+        # (extras() overrides it with the full {lang: bytes} breakdown on providers that expose it).
+        topics = ",".join(norm_repo.topics) or None
+        lang_fallback = json.dumps({norm_repo.language: 1}) if norm_repo.language else None
         conn.execute(
             """INSERT INTO repos(account_id, provider, full_name, url, default_branch, last_synced_at,
-                    stars, forks, watchers, open_issues, language)
-               VALUES(?,?,?,?,?,?,?,?,?,?,?)
+                    stars, forks, watchers, open_issues, language, topics, languages)
+               VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                ON CONFLICT(account_id, full_name) DO UPDATE SET
                    url=excluded.url, default_branch=excluded.default_branch,
                    last_synced_at=excluded.last_synced_at, stars=excluded.stars,
                    forks=excluded.forks, watchers=excluded.watchers,
-                   open_issues=excluded.open_issues, language=excluded.language""",
+                   open_issues=excluded.open_issues, language=excluded.language,
+                   topics=excluded.topics, languages=excluded.languages""",
             (account_id, acc["provider"], norm_repo.full_name, norm_repo.url,
              norm_repo.default_branch, datetime.now(timezone.utc).isoformat(),
              norm_repo.stars, norm_repo.forks, norm_repo.watchers,
-             norm_repo.open_issues, norm_repo.language),
+             norm_repo.open_issues, norm_repo.language, topics, lang_fallback),
         )
         repo_id = conn.execute(
             "SELECT id FROM repos WHERE account_id=? AND full_name=?",
@@ -73,11 +79,14 @@ def sync_account(account_id: int, adapter=None) -> dict:
         # Summary stats (releases/downloads/contributors/builds/tags + docker/npm). Best-effort.
         ex = safe(lambda: adapter.extras(repo_handle), default={}) or {}
         if ex:
+            lang_json = json.dumps(ex["languages"]) if ex.get("languages") else None
+            cstat_json = json.dumps(ex["contrib_stats"]) if ex.get("contrib_stats") else None
             conn.execute(
                 """UPDATE repos SET releases=?, downloads=?, contributors=?, builds=?,
-                        docker_pulls=?, npm_downloads=? WHERE id=?""",
+                        docker_pulls=?, npm_downloads=?,
+                        languages=COALESCE(?, languages), contrib_stats=? WHERE id=?""",
                 (ex.get("releases"), ex.get("downloads"), ex.get("contributors"), ex.get("builds"),
-                 ex.get("docker_pulls"), ex.get("npm_downloads"), repo_id))
+                 ex.get("docker_pulls"), ex.get("npm_downloads"), lang_json, cstat_json, repo_id))
             for t in ex.get("tags", []):
                 if conn.execute("INSERT OR IGNORE INTO tags(repo_id, name) VALUES(?,?)", (repo_id, t)).rowcount:
                     counts["tags"] += 1
@@ -107,14 +116,19 @@ def sync_account(account_id: int, adapter=None) -> dict:
             fn = (lambda: adapter.commits(repo_handle, branch=branch, max_pages=max_pages)) if max_pages \
                 else (lambda: adapter.commits(repo_handle, branch=branch))
             for c in safe(fn):
+                agent, role = ai.classify(c.message, c.author, c.author_email)
                 conn.execute(
                     """INSERT INTO commits(sha, repo_id, branch_ref, author,
-                            author_email, message, committed_at, url, parents)
-                       VALUES(?,?,?,?,?,?,?,?,?)
+                            author_email, message, committed_at, url, parents,
+                            author_login, author_avatar, ai_agent, ai_role)
+                       VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)
                        ON CONFLICT(repo_id, sha) DO UPDATE SET
-                            url=excluded.url, parents=excluded.parents""",
+                            url=excluded.url, parents=excluded.parents,
+                            author_login=excluded.author_login, author_avatar=excluded.author_avatar,
+                            ai_agent=excluded.ai_agent, ai_role=excluded.ai_role""",
                     (c.sha, repo_id, branch, c.author,
-                     c.author_email, c.message, _iso(c.committed_at), c.url, c.parents),
+                     c.author_email, c.message, _iso(c.committed_at), c.url, c.parents,
+                     c.author_login, c.author_avatar, agent, role),
                 )
                 counts["commits"] += 1
 
@@ -148,6 +162,23 @@ def sync_account(account_id: int, adapter=None) -> dict:
             conn.commit()
         except Exception as e:  # noqa: BLE001 — boards may be disabled / no access; non-fatal.
             counts["errors"].append(f"work_items: {type(e).__name__}")
+
+    # GitHub profile achievements (Pull Shark, Starstruck, …). No public API → HTML scrape;
+    # best-effort and non-fatal (see achievements.py ponytail note).
+    if acc["provider"] == "github":
+        try:
+            now = datetime.now(timezone.utc).isoformat()
+            for b in achievements.scrape(acc["username"]):
+                conn.execute(
+                    """INSERT INTO achievements(account_id, username, slug, name, tier, image_url, earned_at)
+                       VALUES(?,?,?,?,?,?,?)
+                       ON CONFLICT(account_id, slug) DO UPDATE SET
+                            name=excluded.name, tier=excluded.tier, image_url=excluded.image_url""",
+                    (account_id, acc["username"], b["slug"], b["name"], b["tier"], b["image_url"], now))
+                counts["achievements"] += 1
+            conn.commit()
+        except Exception as e:  # noqa: BLE001 — scrape is best-effort; markup changes shouldn't fail sync.
+            counts["errors"].append(f"achievements: {type(e).__name__}")
 
     conn.execute(
         "UPDATE accounts SET last_synced_at=? WHERE id=?",

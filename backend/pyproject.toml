@@ -9,6 +9,7 @@ dependencies = [
     "uvicorn[standard]>=0.29",
     "keyring>=25",
     "httpx>=0.27",
+    "graphql-core>=3.2",
 ]
 
 [tool.setuptools.packages.find]

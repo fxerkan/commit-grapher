@@ -66,6 +66,7 @@ input, select, button, textarea { font-family: inherit; }
    overflows; open dropdowns fit within the tall panel so they aren't clipped. */
 .filter-panel {
   flex: 0 0 260px; width: 260px; align-self: stretch; overflow-y: auto;
+  display: flex; flex-direction: column;
   background: var(--panel); border: 1px solid var(--border);
   border-radius: 12px; padding: 12px;
 }

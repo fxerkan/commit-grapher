@@ -8,6 +8,7 @@ import "@react-sigma/core/lib/react-sigma.min.css";
 import { EdgeArrowProgram, EdgeRectangleProgram } from "sigma/rendering";
 import { api, Facets, GraphData } from "../api";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
+import GraphQLPane from "../components/GraphQLPane";
 
 const TYPES = ["account", "repo", "branch", "pr", "commit", "workitem"] as const;
 type NodeType = (typeof TYPES)[number];
@@ -92,10 +93,11 @@ function DragControl() {
   return null;
 }
 
-function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus, onFocus, showArrows }: {
+function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus, onFocus, showArrows, queryKeys }: {
   filters: Filters; branchSel: Set<string | number>; prSel: Set<string | number>;
   botSet: Set<string>; myNames: Set<string>; dataKey: string;
   focus: number | null; onFocus: (id: number | null) => void; showArrows: boolean;
+  queryKeys: Set<string> | null;
 }) {
   const sigma = useSigma();
   const reg = useRegisterEvents();
@@ -123,6 +125,7 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
     const q = filters.search.trim().toLowerCase();
     // key-aware so branch (by name) and PR (by id from the "pr:<id>" key) selections work
     const match = (node: string, data: any) => {
+      if (queryKeys && !queryKeys.has(node)) return false;  // GraphQL result applied as a canvas filter
       if (!filters.types.has(data.nodeType)) return false;
       if (q && !(data.label || "").toLowerCase().includes(q)) return false;
       if (branchSel.size && data.nodeType === "branch" && !branchSel.has(data.label)) return false;
@@ -139,7 +142,9 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
       nodeReducer: (node, data) => {
         if (!match(node, data)) return { ...data, hidden: true };
         const mine = myNames.size && data.author && myNames.has(data.author);
-        const base = mine ? { ...data, color: "#f0c000" } : data;
+        // AI-attributed commit nodes tint purple so agent activity pops on a focused repo.
+        const color = mine ? "#f0c000" : (data.nodeType === "commit" && data.aiAgent ? "#bc8cff" : data.color);
+        const base = { ...data, color };
         if (hot) {
           if (node === hot) return { ...base, forceLabel: true, zIndex: 2, highlighted: true };
           if (graph.areNeighbors(hot, node)) return { ...base, forceLabel: true, zIndex: 1 };  // show neighbor names
@@ -157,7 +162,7 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
         return { ...data, type };
       },
     });
-  }, [hovered, filters, branchSel, prSel, myNames, botSet, showArrows, sigma, setSettings]);
+  }, [hovered, filters, branchSel, prSel, myNames, botSet, showArrows, queryKeys, sigma, setSettings]);
   return null;
 }
 
@@ -182,10 +187,14 @@ export default function GraphView() {
   const [projects, setProjects] = useState<Set<string | number>>(new Set());
   const [repos, setRepos] = useState<Set<string | number>>(new Set());
   const [authors, setAuthors] = useState<Set<string | number>>(new Set());
+  const [languages, setLanguages] = useState<Set<string | number>>(new Set());
+  const [libraries, setLibraries] = useState<Set<string | number>>(new Set());
+  const [aiAgents, setAiAgents] = useState<Set<string | number>>(new Set());
   // client-side filters (branch/PR selections + node types/search/human-AI)
   const [branchSel, setBranchSel] = useState<Set<string | number>>(new Set());
   const [prSel, setPrSel] = useState<Set<string | number>>(new Set());
   const [filters, setFilters] = useState<Filters>({ types: new Set(TYPES), search: "", branch: "", humanAI: "all" });
+  const [queryKeys, setQueryKeys] = useState<Set<string> | null>(null);  // node keys from a GraphQL query, applied to the canvas
 
   // Cascading facets: org → workspace → repo → branch/PR/author all narrow to the selection.
   useEffect(() => {
@@ -224,11 +233,14 @@ export default function GraphView() {
       projects: projects.size ? [...projects].map(String) : undefined,
       organizations: organizations.size ? [...organizations].map(String) : undefined,
       account_ids: accountIds.size ? [...accountIds].map(Number) : undefined,
+      languages: languages.size ? [...languages].map(String) : undefined,
+      libraries: libraries.size ? [...libraries].map(String) : undefined,
+      ai_agents: aiAgents.size ? [...aiAgents].map(String) : undefined,
     }).then((d) => { setData(d); setErr(null); }).catch((e) => setErr(e.message)).finally(() => setUpdating(false));
-  }, [providerStr, focus, JSON.stringify(effectiveAuthors), JSON.stringify([...repos]), JSON.stringify([...projects]), JSON.stringify([...organizations]), JSON.stringify([...accountIds])]);
+  }, [providerStr, focus, JSON.stringify(effectiveAuthors), JSON.stringify([...repos]), JSON.stringify([...projects]), JSON.stringify([...organizations]), JSON.stringify([...accountIds]), JSON.stringify([...languages]), JSON.stringify([...libraries]), JSON.stringify([...aiAgents])]);
 
   const botSet = useMemo(() => new Set((facets?.authors || []).filter((a) => a.bot).map((a) => a.name)), [facets]);
-  const dataKey = `${providerStr}|${focus}|${[...repos]}|${[...projects]}|${[...organizations]}|${[...accountIds]}|${effectiveAuthors}`;
+  const dataKey = `${providerStr}|${focus}|${[...repos]}|${[...projects]}|${[...organizations]}|${[...accountIds]}|${effectiveAuthors}|${[...languages]}|${[...libraries]}|${[...aiAgents]}`;
   const theme = document.documentElement.dataset.theme || "dark";
   const textColor = theme === "light" ? "#1f2328" : "#e6edf3";
   const halo = theme === "light" ? "#ffffffcc" : "#0d1117cc";
@@ -243,16 +255,20 @@ export default function GraphView() {
   }), [textColor, halo, edgeColor]);
 
   const activeCount = provider.size + organizations.size + accountIds.size + projects.size + repos.size
-    + authors.size + branchSel.size + prSel.size
+    + authors.size + languages.size + libraries.size + aiAgents.size + branchSel.size + prSel.size
     + (filters.search ? 1 : 0) + (filters.humanAI !== "all" ? 1 : 0)
-    + (filters.types.size !== TYPES.length ? 1 : 0) + (onlyMine ? 1 : 0) + (focus != null ? 1 : 0);
+    + (filters.types.size !== TYPES.length ? 1 : 0) + (onlyMine ? 1 : 0) + (focus != null ? 1 : 0)
+    + (queryKeys ? 1 : 0);
 
   const resetAll = () => {
     setProvider(new Set()); setOrganizations(new Set()); setAccountIds(new Set());
     setProjects(new Set()); setRepos(new Set()); setAuthors(new Set());
+    setLanguages(new Set()); setLibraries(new Set()); setAiAgents(new Set());
     setBranchSel(new Set()); setPrSel(new Set()); setFocus(null); setOnlyMine(false);
     setFilters({ types: new Set(TYPES), search: "", branch: "", humanAI: "all" });
+    setQueryKeys(null);
   };
+  const applyQuery = (keys: string[] | null) => setQueryKeys(keys && keys.length ? new Set(keys) : null);
 
   const providerOpts = (facets?.providers || []).map((p) => ({ key: p, label: p }));
   const orgOpts = (facets?.organizations || []).filter((o) => !providerStr || o.provider === providerStr).map((o) => ({ key: o.name, label: o.name }));
@@ -266,6 +282,9 @@ export default function GraphView() {
     key: a.name, label: a.name, count: a.count,
     badge: a.bot ? "AI" : undefined, badgeColor: "#8957e5",
   }));
+  const langOpts = (facets?.languages || []).map((l) => ({ key: l.name, label: l.name, count: l.count }));
+  const libOpts = (facets?.libraries || []).map((l) => ({ key: l.name, label: l.name, count: l.count }));
+  const aiOpts = (facets?.ai_agents || []).map((a) => ({ key: a.name, label: a.name, count: a.count, badge: "AI", badgeColor: "#8957e5" }));
 
   const dims: FilterDim[] = [
     { key: "provider", label: "Provider", options: providerOpts, selected: provider, placeholder: "All providers",
@@ -280,6 +299,9 @@ export default function GraphView() {
     { key: "branch", label: "Branch", options: branchOpts, selected: branchSel, placeholder: "All branches", onChange: setBranchSel },
     { key: "pr", label: "Pull request", options: prOpts, selected: prSel, placeholder: "All PRs", onChange: setPrSel },
     { key: "author", label: "Author", options: authorOpts, selected: authors, placeholder: "All authors", onChange: setAuthors },
+    { key: "lang", label: "Language", options: langOpts, selected: languages, placeholder: "All languages", onChange: setLanguages },
+    { key: "lib", label: "Library / Framework", options: libOpts, selected: libraries, placeholder: "All libraries", onChange: setLibraries },
+    { key: "ai", label: "AI Agent", options: aiOpts, selected: aiAgents, placeholder: "All agents", onChange: setAiAgents },
   ];
 
   // Graph-specific controls that don't exist on other pages.
@@ -335,25 +357,28 @@ export default function GraphView() {
   if (err) return <div style={{ padding: 40, color: "#f85149" }}>Error: {err}</div>;
 
   return (
-    <div style={{ display: "flex", height: "100%", overflow: "hidden", gap: 12, padding: 12 }}>
-      <FilterPanel dims={dims} open={open} onOpenChange={setOpen} activeCount={activeCount}
-        extra={extra} footer={footer} width={width} onWidthChange={setWidth} />
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
+      <GraphQLPane provider={providerStr} onApply={applyQuery} applied={queryKeys != null} />
+      <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden", gap: 12, padding: 12 }}>
+        <FilterPanel dims={dims} open={open} onOpenChange={setOpen} activeCount={activeCount}
+          extra={extra} footer={footer} width={width} onWidthChange={setWidth} />
 
-      <div style={{ flex: 1, minWidth: 0, overflow: "hidden", position: "relative" }}>
-        {updating && <div style={{ position: "absolute", top: 10, right: 14, zIndex: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", fontSize: 12, color: "var(--muted)" }}>updating…</div>}
-        {!data ? (
-          <div style={{ padding: 40 }}>Loading graph…</div>
-        ) : data.nodes.length === 0 ? (
-          <div style={{ padding: 40 }}>No nodes match these filters.</div>
-        ) : (
-          <ErrorBoundary>
-            <SigmaContainer key={theme} style={{ height: "100%", background: "var(--bg)" }} settings={sigmaSettings}>
-              <LoadGraph data={data} />
-              <DragControl />
-              <Controller filters={filters} branchSel={branchSel} prSel={prSel} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} />
-            </SigmaContainer>
-          </ErrorBoundary>
-        )}
+        <div style={{ flex: 1, minWidth: 0, overflow: "hidden", position: "relative" }}>
+          {updating && <div style={{ position: "absolute", top: 10, right: 14, zIndex: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", fontSize: 12, color: "var(--muted)" }}>updating…</div>}
+          {!data ? (
+            <div style={{ padding: 40 }}>Loading graph…</div>
+          ) : data.nodes.length === 0 ? (
+            <div style={{ padding: 40 }}>No nodes match these filters.</div>
+          ) : (
+            <ErrorBoundary>
+              <SigmaContainer key={theme} style={{ height: "100%", background: "var(--bg)" }} settings={sigmaSettings}>
+                <LoadGraph data={data} />
+                <DragControl />
+                <Controller filters={filters} branchSel={branchSel} prSel={prSel} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} queryKeys={queryKeys} />
+              </SigmaContainer>
+            </ErrorBoundary>
+          )}
+        </div>
       </div>
     </div>
   );

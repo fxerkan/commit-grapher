@@ -9,9 +9,21 @@ is focused — then its commits are expanded.
 """
 from __future__ import annotations
 
+import json
 import math
 
 from . import db
+
+
+def _repo_langs(row) -> set[str]:
+    try:
+        return set(json.loads(row["languages"] or "{}").keys())
+    except (ValueError, TypeError):
+        return set()
+
+
+def _repo_topics(row) -> set[str]:
+    return {t for t in (row["topics"] or "").split(",") if t}
 
 COLORS = {
     "account": "#f78166",
@@ -43,7 +55,8 @@ def _org_of(acc, full_name: str) -> str:
 def build(provider: str | None = None, focus_repo: int | None = None,
           authors: list[str] | None = None, repo_ids: list[int] | None = None,
           projects: list[str] | None = None, organizations: list[str] | None = None,
-          account_ids: list[int] | None = None) -> dict:
+          account_ids: list[int] | None = None, languages: list[str] | None = None,
+          libraries: list[str] | None = None, ai_agents: list[str] | None = None) -> dict:
     """provider filters accounts; focus_repo shows ONLY that repo's subgraph (commits expanded);
     authors restricts to repos where those authors committed (and, when focused, to their commits).
     Nodes carry repoId/project (+ author for commits) so the client can filter live."""
@@ -61,7 +74,19 @@ def build(provider: str | None = None, focus_repo: int | None = None,
         author_repo_ids = {r["repo_id"] for r in conn.execute(
             f"SELECT DISTINCT repo_id FROM commits WHERE author IN ({ph})", authors).fetchall()}
 
-    def add_node(key, label, node_type, size, repo_id=None, author=None, project=None, organization=None):
+    # Repos with at least one commit attributed to a selected AI agent.
+    ai_agents = [a for a in (ai_agents or []) if a]
+    ai_repo_ids: set[int] | None = None
+    if ai_agents:
+        ph = ",".join("?" * len(ai_agents))
+        ai_repo_ids = {r["repo_id"] for r in conn.execute(
+            f"SELECT DISTINCT repo_id FROM commits WHERE ai_agent IN ({ph})", ai_agents).fetchall()}
+
+    lang_set = set(languages) if languages else None
+    lib_set = set(libraries) if libraries else None
+
+    def add_node(key, label, node_type, size, repo_id=None, author=None, project=None,
+                 organization=None, ai_agent=None):
         nonlocal i
         x, y = _scatter(i)
         i += 1
@@ -75,6 +100,8 @@ def build(provider: str | None = None, focus_repo: int | None = None,
             attrs["project"] = project
         if organization is not None:
             attrs["organization"] = organization
+        if ai_agent is not None:
+            attrs["aiAgent"] = ai_agent
         nodes.append({"key": key, "attributes": attrs})
         added.add(key)
 
@@ -96,6 +123,12 @@ def build(provider: str | None = None, focus_repo: int | None = None,
             repos = conn.execute("SELECT * FROM repos WHERE account_id=?", (acc["id"],)).fetchall()
         if author_repo_ids is not None:
             repos = [r for r in repos if r["id"] in author_repo_ids]
+        if ai_repo_ids is not None:
+            repos = [r for r in repos if r["id"] in ai_repo_ids]
+        if lang_set is not None:
+            repos = [r for r in repos if _repo_langs(r) & lang_set]
+        if lib_set is not None:
+            repos = [r for r in repos if _repo_topics(r) & lib_set]
         if repo_ids:
             repos = [r for r in repos if r["id"] in set(repo_ids)]
         if projects:
@@ -135,26 +168,26 @@ def build(provider: str | None = None, focus_repo: int | None = None,
                 if tgt:
                     edges.append({"key": f"{pkey}->{tgt}", "source": pkey, "target": tgt})
 
-            # Focused repo -> expand its commits as individual nodes (author-scoped if set).
+            # Focused repo -> expand its commits as individual nodes (author/AI-scoped if set).
             if focus_repo == rid:
+                cw, ca = ["repo_id=?"], [rid]
                 if authors:
-                    ph = ",".join("?" * len(authors))
-                    rows = conn.execute(
-                        f"SELECT sha, message, author FROM commits WHERE repo_id=? AND author IN ({ph}) "
-                        "ORDER BY committed_at DESC LIMIT ?", (rid, *authors, EXPAND_COMMIT_CAP)).fetchall()
-                else:
-                    rows = conn.execute(
-                        "SELECT sha, message, author FROM commits WHERE repo_id=? ORDER BY committed_at DESC LIMIT ?",
-                        (rid, EXPAND_COMMIT_CAP)).fetchall()
+                    cw.append(f"author IN ({','.join('?' * len(authors))})"); ca += authors
+                if ai_agents:
+                    cw.append(f"ai_agent IN ({','.join('?' * len(ai_agents))})"); ca += ai_agents
+                rows = conn.execute(
+                    f"SELECT sha, message, author, ai_agent FROM commits WHERE {' AND '.join(cw)} "
+                    "ORDER BY committed_at DESC LIMIT ?", (*ca, EXPAND_COMMIT_CAP)).fetchall()
                 for cm in rows:
                     ckey = f"commit:{rid}:{cm['sha']}"
                     label = (cm["message"] or cm["sha"]).splitlines()[0][:48]
-                    add_node(ckey, label, "commit", 2, repo_id=rid, author=cm["author"], project=_proj)
+                    add_node(ckey, label, "commit", 2, repo_id=rid, author=cm["author"],
+                             project=_proj, ai_agent=cm["ai_agent"])
                     edges.append({"key": f"{rkey}->{ckey}", "source": rkey, "target": ckey})
 
         # Work items / issues → hung off their project's visible repos (skipped when a single
         # repo is focused, to keep the drill-down about that repo's commits).
-        if focus_repo is None and not authors:
+        if focus_repo is None and not authors and not ai_agents:
             for wi in conn.execute("SELECT * FROM work_items WHERE account_id=?", (acc["id"],)).fetchall():
                 repo_keys = proj_repo_keys.get(wi["project"])
                 if not repo_keys:  # its project isn't in the current filter scope
@@ -170,7 +203,7 @@ def build(provider: str | None = None, focus_repo: int | None = None,
     # --- Jira issues: a separate platform bridged to git via match.py links. Cross-account, so
     #     it runs after every git node exists and only draws to nodes actually in the (filtered)
     #     graph — an issue with no visible match simply doesn't appear.
-    if focus_repo is None and not authors:
+    if focus_repo is None and not authors and not ai_agents:
         def ensure_target(kind, node_id):
             # A Jira match's git node (pr/branch/repo). Add it on demand if the current filter
             # didn't already include it, so selecting the Jira account still reveals the match.

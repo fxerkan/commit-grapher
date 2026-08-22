@@ -4,14 +4,16 @@ import { api } from "./api";
 const GraphView = lazy(() => import("./views/GraphView"));
 const HeatmapView = lazy(() => import("./views/HeatmapView"));
 const StatsView = lazy(() => import("./views/StatsView"));
+const ContributorsView = lazy(() => import("./views/ContributorsView"));
 const Accounts = lazy(() => import("./views/Accounts"));
 const Onboarding = lazy(() => import("./views/Onboarding"));
 
-type Tab = "graph" | "heatmap" | "stats" | "accounts";
+type Tab = "graph" | "heatmap" | "stats" | "contributors" | "accounts";
 const TABS: [Tab, string][] = [
   ["graph", "Network Graph"],
   ["heatmap", "Contribution Heatmap"],
   ["stats", "Stats"],
+  ["contributors", "Contributors"],
   ["accounts", "Accounts"],
 ];
 
@@ -66,6 +68,7 @@ export default function App() {
           {tab === "graph" && <GraphView />}
           {tab === "heatmap" && <HeatmapView />}
           {tab === "stats" && <StatsView />}
+          {tab === "contributors" && <ContributorsView />}
           {tab === "accounts" && <Accounts />}
         </Suspense>
       </main>

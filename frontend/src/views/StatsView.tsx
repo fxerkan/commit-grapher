@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import * as echarts from "echarts";
 import "echarts-wordcloud";
-import { api, ChartStats, Facets } from "../api";
+import { api, ChartStats, Facets, AchievementRow } from "../api";
 import { Opt } from "../components/MultiSelect";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
+import LanguagesBar from "../components/LanguagesBar";
 
 // One reusable ECharts canvas. `onClick` wires cross-filter / drill-down.
 function EChart({ option, height = 260, onClick }: { option: any; height?: number; onClick?: (p: any) => void }) {
@@ -19,6 +20,40 @@ function EChart({ option, height = 260, onClick }: { option: any; height?: numbe
     return () => { window.removeEventListener("resize", onResize); chart.dispose(); };
   }, [option, onClick]);
   return <div ref={ref} style={{ width: "100%", height }} />;
+}
+
+const ROLE_LABEL: Record<string, string> = { committed: "AI committed", authored: "AI wrote code", "co-authored": "AI co-authored" };
+const ROLE_EMOJI: Record<string, string> = { committed: "🤖", authored: "✍️", "co-authored": "🤝" };
+
+// GitHub-style "Overview" pulse: merged/open PRs and closed/open issues as split bars.
+function PulseCard({ pulse }: { pulse: ChartStats["pulse"] }) {
+  if (!pulse) return null;
+  const Bar = ({ a, b, ca, cb }: { a: number; b: number; ca: string; cb: string }) => {
+    const t = a + b || 1;
+    return (
+      <div style={{ display: "flex", height: 8, borderRadius: 4, overflow: "hidden", background: "var(--border)" }}>
+        <div style={{ width: `${(a / t) * 100}%`, background: ca }} />
+        <div style={{ width: `${(b / t) * 100}%`, background: cb }} />
+      </div>
+    );
+  };
+  return (
+    <div style={{ display: "flex", flexDirection: "column", gap: 14, fontSize: 13 }}>
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <span>🔀 <b>{pulse.prs_merged}</b> merged PRs</span><span style={{ color: "var(--muted)" }}>{pulse.prs_open} open</span>
+        </div>
+        <Bar a={pulse.prs_merged} b={pulse.prs_open} ca="#8250df" cb="#3fb950" />
+      </div>
+      <div>
+        <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
+          <span>🐛 <b>{pulse.issues_closed}</b> closed issues</span><span style={{ color: "var(--muted)" }}>{pulse.issues_open} open</span>
+        </div>
+        <Bar a={pulse.issues_closed} b={pulse.issues_open} ca="#8250df" cb="#f85149" />
+      </div>
+      <div style={{ color: "var(--muted)" }}>{pulse.prs_total} total pull requests in scope</div>
+    </div>
+  );
 }
 
 const S = (arr: Iterable<any>) => new Set(arr);
@@ -84,8 +119,10 @@ export default function StatsView() {
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [sec, setSec] = useState<Record<string, boolean>>({ kpi: true, facts: true, repo: true, charts: true });
+  const [sec, setSec] = useState<Record<string, boolean>>({ kpi: true, insights: true, facts: true, repo: true, charts: true });
   const toggle = (k: string) => setSec((v) => ({ ...v, [k]: !v[k] }));
+  const [achv, setAchv] = useState<AchievementRow[]>([]);
+  useEffect(() => { api.achievements().then(setAchv).catch(() => {}); }, []);
 
   // Filter dimensions + date range.
   const [providers, setProviders] = useState<Set<any>>(S([]));
@@ -95,6 +132,9 @@ export default function StatsView() {
   const [repos, setRepos] = useState<Set<any>>(S([]));
   const [authors, setAuthors] = useState<Set<any>>(S([]));
   const [tags, setTags] = useState<Set<any>>(S([]));
+  const [languages, setLanguages] = useState<Set<any>>(S([]));
+  const [libraries, setLibraries] = useState<Set<any>>(S([]));
+  const [aiAgents, setAiAgents] = useState<Set<any>>(S([]));
   const [start, setStart] = useState("");
   const [end, setEnd] = useState("");
 
@@ -111,22 +151,26 @@ export default function StatsView() {
     }).then(setFacets).catch(() => {});
   }, [fkey]);
 
-  // Resolve all repo-scoping dimensions (incl. tags) to a concrete repo-id list.
-  const repoDimActive = providers.size || orgs.size || projects.size || accounts.size || repos.size || tags.size;
+  // Resolve all repo-scoping dimensions (incl. tags, language, library) to a repo-id list.
+  const repoDimActive = providers.size || orgs.size || projects.size || accounts.size || repos.size || tags.size || languages.size || libraries.size;
   const effRepos = useMemo(() => (facets?.repos || []).filter((r) =>
     (!providers.size || providers.has(r.provider)) &&
     (!orgs.size || orgs.has(r.organization)) &&
     (!projects.size || projects.has(r.project)) &&
     (!accounts.size || accounts.has(r.account_id)) &&
     (!repos.size || repos.has(r.id)) &&
-    (!tags.size || (r.tags || []).some((t) => tags.has(t)))
-  ), [facets, providers, orgs, projects, accounts, repos, tags]);
+    (!tags.size || (r.tags || []).some((t) => tags.has(t))) &&
+    (!languages.size || (r.languages || []).some((l) => languages.has(l))) &&
+    (!libraries.size || (r.libraries || []).some((l) => libraries.has(l)))
+  ), [facets, providers, orgs, projects, accounts, repos, tags, languages, libraries]);
   const repoIds = repoDimActive ? (effRepos.length ? effRepos.map((r) => r.id) : [-1]) : undefined;
 
-  const qkey = JSON.stringify([repoIds, [...authors].sort(), start, end]);
+  const qkey = JSON.stringify([repoIds, [...authors].sort(), [...aiAgents].sort(), start, end]);
   useEffect(() => {
     setLoading(true);
-    api.charts({ repo_ids: repoIds, authors: [...authors] as string[], start: start || undefined, end: end || undefined })
+    api.charts({ repo_ids: repoIds, authors: [...authors] as string[],
+      ai_agents: aiAgents.size ? [...aiAgents].map(String) : undefined,
+      start: start || undefined, end: end || undefined })
       .then((d) => { setS(d); setErr(null); })
       .catch((e) => setErr(e.message))
       .finally(() => setLoading(false));
@@ -151,6 +195,9 @@ export default function StatsView() {
     key: a.name, label: a.name, count: a.count, badge: a.bot ? "bot" : undefined, badgeColor: "#6e40c9",
   }));
   const tagOpts: Opt[] = (facets?.tags || []).map((t) => ({ key: t.name, label: t.name, count: t.count }));
+  const langOpts: Opt[] = (facets?.languages || []).map((l) => ({ key: l.name, label: l.name, count: l.count }));
+  const libOpts: Opt[] = (facets?.libraries || []).map((l) => ({ key: l.name, label: l.name, count: l.count }));
+  const aiOpts: Opt[] = (facets?.ai_agents || []).map((a) => ({ key: a.name, label: a.name, count: a.count, badge: "AI", badgeColor: "#6e40c9" }));
 
   const repoName = (id: number) => facets?.repos.find((r) => r.id === id)?.full_name || `#${id}`;
   const accName = (id: number) => facets?.accounts.find((a) => a.id === id)?.display_name || `#${id}`;
@@ -165,6 +212,9 @@ export default function StatsView() {
     { key: "proj", label: "Workspace", options: projOpts, selected: projects, onChange: setProjects, placeholder: "All workspaces" },
     { key: "repo", label: "Repository", options: repoOpts, selected: repos, onChange: setRepos, placeholder: "All repos" },
     { key: "auth", label: "Author", options: authorOpts, selected: authors, onChange: setAuthors, placeholder: "All authors" },
+    { key: "lang", label: "Language", options: langOpts, selected: languages, onChange: setLanguages, placeholder: "All languages" },
+    { key: "lib", label: "Library / Framework", options: libOpts, selected: libraries, onChange: setLibraries, placeholder: "All libraries" },
+    { key: "ai", label: "AI Agent", options: aiOpts, selected: aiAgents, onChange: setAiAgents, placeholder: "All agents" },
     { key: "tag", label: "Tag", options: tagOpts, selected: tags, onChange: setTags, placeholder: "All tags" },
   ];
   const chips: { label: string; rm: () => void }[] = [
@@ -174,10 +224,13 @@ export default function StatsView() {
     ...[...accounts].map((k) => ({ label: `account: ${accName(k)}`, rm: () => del(accounts, setAccounts, k) })),
     ...[...repos].map((k) => ({ label: `repo: ${repoName(k)}`, rm: () => del(repos, setRepos, k) })),
     ...[...authors].map((k) => ({ label: `author: ${k}`, rm: () => del(authors, setAuthors, k) })),
+    ...[...languages].map((k) => ({ label: `lang: ${k}`, rm: () => del(languages, setLanguages, k) })),
+    ...[...libraries].map((k) => ({ label: `lib: ${k}`, rm: () => del(libraries, setLibraries, k) })),
+    ...[...aiAgents].map((k) => ({ label: `AI: ${k}`, rm: () => del(aiAgents, setAiAgents, k) })),
     ...[...tags].map((k) => ({ label: `tag: ${k}`, rm: () => del(tags, setTags, k) })),
     ...(start || end ? [{ label: `date: ${start || "…"} → ${end || "…"}`, rm: () => { setStart(""); setEnd(""); } }] : []),
   ];
-  const clearAll = () => { setProviders(S([])); setOrgs(S([])); setProjects(S([])); setAccounts(S([])); setRepos(S([])); setAuthors(S([])); setTags(S([])); setStart(""); setEnd(""); };
+  const clearAll = () => { setProviders(S([])); setOrgs(S([])); setProjects(S([])); setAccounts(S([])); setRepos(S([])); setAuthors(S([])); setTags(S([])); setLanguages(S([])); setLibraries(S([])); setAiAgents(S([])); setStart(""); setEnd(""); };
 
   // ── ECharts options ────────────────────────────────────────────────
   const months = useMemo(() => Object.keys(s?.monthly || {}), [s]);
@@ -235,6 +288,22 @@ export default function StatsView() {
       data: s?.tags || [],
     }],
   }), [s]);
+  const aiDonut = useMemo(() => ({
+    tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" }, legend: { bottom: 0, textStyle: { color: txt } },
+    series: [{
+      type: "pie", radius: ["45%", "70%"], center: ["50%", "45%"], label: { color: txt },
+      data: (s?.ai?.human_vs_ai || []).map((d) => ({ ...d, itemStyle: { color: d.name === "AI" ? "#bc8cff" : "#3fb950" } })),
+    }],
+  }), [s, txt]);
+  const aiAgentsBar = useMemo(() => {
+    const d = (s?.ai?.by_agent || []).slice(0, 8);
+    return {
+      tooltip: {}, grid: { left: 8, right: 20, top: 8, bottom: 8, containLabel: true },
+      xAxis: { type: "value", axisLabel: { color: txt }, splitLine: { lineStyle: { color: grid } } },
+      yAxis: { type: "category", data: d.map((x) => x.name).reverse(), axisLabel: { color: txt } },
+      series: [{ type: "bar", data: d.map((x) => ({ value: x.value, name: x.name })).reverse(), itemStyle: { color: "#bc8cff" }, barWidth: "60%" }],
+    };
+  }, [s, txt, grid]);
 
   if (err) return <div style={{ padding: 40, color: "#f85149" }}>Error: {err}</div>;
 
@@ -243,6 +312,7 @@ export default function StatsView() {
   const rs = s?.repo_stats;
   const owl = s?.night_owl_hour ?? 0;
   const hasRepoStats = rs && Object.values(rs).some((v) => v > 0);
+  const shownAchv = achv.filter((a) => !accounts.size || accounts.has(a.account_id));
 
   return (
     <div className="stats-layout">
@@ -268,6 +338,46 @@ export default function StatsView() {
               <div className="card" style={{ color: "var(--muted)" }}>No commits match these filters. Loosen the filters or widen the date range.</div>
             ) : (
               <>
+                <Section title="Languages, AI & Pulse" open={sec.insights} onToggle={() => toggle("insights")}>
+                <div className="charts-grid">
+                  <ChartCard title="Languages" hint="share by repo language">
+                    {(s.languages?.length ?? 0) > 0
+                      ? <LanguagesBar data={s.languages} />
+                      : <div style={{ color: "var(--muted)", fontSize: 13 }}>No language data yet — re-sync accounts.</div>}
+                  </ChartCard>
+                  <ChartCard title="AI vs Human commits" hint="who committed">
+                    <EChart option={aiDonut} height={240} />
+                  </ChartCard>
+                  <ChartCard title="AI by agent" hint="click to filter">
+                    {(s.ai?.by_agent?.length ?? 0) > 0
+                      ? <EChart option={aiAgentsBar} height={240} onClick={(p: any) => p.name && add(aiAgents, setAiAgents, p.name)} />
+                      : <div style={{ color: "var(--muted)", fontSize: 13 }}>No AI-attributed commits in scope.</div>}
+                  </ChartCard>
+                  <ChartCard title="AI role — commit vs code vs co-author">
+                    <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, paddingTop: 6 }}>
+                      {(s.ai?.by_role?.length ?? 0) > 0 ? s.ai.by_role.map((r) => (
+                        <div key={r.name} style={{ display: "flex", justifyContent: "space-between" }}>
+                          <span>{ROLE_EMOJI[r.name] || "🤖"} {ROLE_LABEL[r.name] || r.name}</span><b>{r.value.toLocaleString()}</b>
+                        </div>
+                      )) : <div style={{ color: "var(--muted)" }}>No AI commits in scope.</div>}
+                    </div>
+                  </ChartCard>
+                  <ChartCard title="Pulse — overview"><PulseCard pulse={s.pulse} /></ChartCard>
+                  <ChartCard title="Achievements" hint={accounts.size ? "selected accounts" : "all accounts"}>
+                    {shownAchv.length ? (
+                      <div style={{ display: "flex", flexWrap: "wrap", gap: 12 }}>
+                        {shownAchv.map((a, i) => (
+                          <div key={i} title={`${a.name}${a.tier > 1 ? ` ×${a.tier}` : ""} — ${a.username}`} style={{ position: "relative" }}>
+                            <img src={a.image_url} alt={a.name} width={48} height={48} style={{ borderRadius: "50%" }} />
+                            {a.tier > 1 && <span style={{ position: "absolute", right: -4, bottom: -2, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8, fontSize: 10, padding: "0 4px" }}>x{a.tier}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    ) : <div style={{ color: "var(--muted)", fontSize: 13 }}>No achievements yet — re-sync a GitHub account.</div>}
+                  </ChartCard>
+                </div>
+                </Section>
+
                 <Section title="Fun Facts" open={sec.facts} onToggle={() => toggle("facts")}>
                 <div className="facts-grid">
                   <Fact emoji="📜" title="The Essay — longest commit message">

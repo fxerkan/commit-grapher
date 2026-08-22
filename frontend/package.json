@@ -1,5 +1,6 @@
 {
   "name": "commit-grapher-frontend",
+  "version": "0.1.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,6 +10,7 @@
   },
   "dependencies": {
     "@react-sigma/core": "^4.0.3",
+    "@sigma/node-image": "^3.0.0",
     "echarts": "^5.5.1",
     "echarts-wordcloud": "^2.1.0",
     "graphology": "^0.25.4",
