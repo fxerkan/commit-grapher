@@ -1,6 +1,6 @@
 import { ReactNode, useState } from "react";
 import MultiSelect, { Opt } from "./MultiSelect";
-import { APP_NAME, APP_VERSION, REPO_URL, AUTHOR_URL } from "../version";
+import { APP_VERSION, REPO_URL, AUTHOR_URL } from "../version";
 import { useT } from "../i18n";
 
 // GitHub mark (inline so there's no icon dependency).
@@ -124,7 +124,7 @@ export default function FilterPanel({
 
       {/* App credit — pinned to the bottom of the (full-height) panel on every page. */}
       <div style={{ marginTop: "auto", paddingTop: 12, borderTop: "1px solid var(--border)", display: "flex", alignItems: "center", gap: 6, flexWrap: "wrap", fontSize: 11, color: "var(--muted)" }}>
-        <span><b style={{ color: "var(--fg)", fontWeight: 600 }}>{APP_NAME}</b> v{APP_VERSION}</span>
+        <span><b style={{ color: "var(--fg)", fontWeight: 600 }}>commit-graph<span style={{ color: "var(--accent2)" }}>er</span></b> v{APP_VERSION}</span>
         <span>·</span>
         <a href={REPO_URL} target="_blank" rel="noreferrer" title="GitHub repository" aria-label="GitHub repository" style={{ display: "inline-flex", color: "var(--muted)" }}><GitHubMark /></a>
         <span>·</span>

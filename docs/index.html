@@ -39,27 +39,34 @@
   .nav-links{display:flex;gap:24px;align-items:center;color:var(--muted);font-size:15px}
   .nav-links a:hover{color:var(--fg)}
 
-  /* hero — text LEFT, live graph RIGHT (no overlap) */
-  .hero{border-bottom:1px solid var(--border)}
-  .hero .wrap{display:grid;grid-template-columns:1.02fr 1fr;gap:48px;align-items:center;
-    min-height:calc(100vh - 64px);padding-top:40px;padding-bottom:40px}
-  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--accent);
-    background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.25);padding:6px 12px;border-radius:999px;margin-bottom:22px}
-  h1{font-size:clamp(34px,4.6vw,60px);line-height:1.04;letter-spacing:-1.5px;margin:0 0 18px;font-weight:800;max-width:15ch}
-  .sub{font-size:clamp(16px,1.5vw,19px);color:var(--muted);max-width:52ch;margin:0 0 30px}
-  .cta{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:32px}
-  .chips{display:flex;gap:28px;flex-wrap:wrap}
-  .chip .n{font-size:26px;font-weight:800}.chip .l{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
-  .hero-graph{position:relative}
-  #graph{position:relative;width:100%;height:min(70vh,560px);border:1px solid var(--border);border-radius:var(--radius);
-    background:radial-gradient(120% 120% at 72% 28%, #121a26, #0a0d12);overflow:hidden;
-    box-shadow:0 40px 90px -50px #000,0 1px 0 rgba(255,255,255,.04) inset}
-  .hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;color:var(--muted);font-size:12px;pointer-events:none;z-index:4}
+  /* hero — big live graph LEFT (borderless, fills the space), text RIGHT */
+  .hero{border-bottom:1px solid var(--border);overflow:hidden}
+  .hero .wrap{display:grid;grid-template-columns:1.32fr .82fr;gap:32px;align-items:center;min-height:calc(100vh - 64px)}
+  .hero-graph{order:-1;position:relative}                        /* graph on the LEFT */
+  #graph{position:relative;width:100%;height:calc(100vh - 128px);max-height:860px;background:transparent;overflow:hidden}
+  .hint{position:absolute;bottom:2px;left:0;right:0;text-align:center;color:var(--muted);font-size:12px;pointer-events:none;z-index:4;opacity:.75}
   .g-tip{position:absolute;transform:translate(-50%,-136%);background:var(--panel);border:1px solid var(--border);
     border-radius:10px;padding:8px 11px;font-size:12px;color:var(--fg);pointer-events:none;opacity:0;
     transition:opacity .12s;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     z-index:6;box-shadow:0 12px 30px -12px #000}
   .g-tip b{display:block;font-size:13px;margin-bottom:1px} .g-tip span{color:var(--muted)}
+  .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--accent);
+    background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.25);padding:6px 12px;border-radius:999px;margin-bottom:20px}
+  h1{font-size:clamp(32px,4vw,54px);line-height:1.06;letter-spacing:-1.4px;margin:0 0 16px;font-weight:800;max-width:16ch}
+  .uline{position:relative;white-space:nowrap}
+  .uline::after{content:"";position:absolute;left:0;right:0;bottom:.02em;height:.15em;border-radius:4px;
+    background:linear-gradient(90deg,var(--accent),var(--accent2))}
+  .sub{font-size:clamp(15px,1.35vw,17px);color:var(--muted);max-width:46ch;margin:0 0 14px}
+  .unify{font-size:14.5px;color:var(--fg);opacity:.92;max-width:46ch;margin:0 0 20px}
+  .unify b{color:var(--accent)}
+  .hero-provs{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 26px}
+  .pv{display:inline-flex;align-items:center;gap:6px;padding:5px 11px;border:1px solid var(--border);border-radius:999px;background:var(--panel);font-size:12.5px;color:var(--muted)}
+  .pv svg,.pv img{width:15px;height:15px;display:block}
+  .pv.jira{border-color:color-mix(in srgb,var(--accent2) 60%,var(--border));color:var(--fg);
+    box-shadow:0 0 0 1px color-mix(in srgb,var(--accent2) 28%,transparent),0 8px 22px -10px var(--accent2)}
+  .cta{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:30px}
+  .chips{display:flex;gap:26px;flex-wrap:wrap}
+  .chip .n{font-size:24px;font-weight:800}.chip .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
 
   /* sections */
   section{padding:92px 0}
@@ -75,12 +82,25 @@
   .card h3{margin:0 0 8px;font-size:19px}
   .card p{margin:0;color:var(--muted);font-size:15px}
 
-  /* screenshot walkthrough */
+  /* screenshot walkthrough — glowing, floating, click to enlarge */
   .shot{display:grid;grid-template-columns:1fr 1fr;gap:40px;align-items:center;margin:0 0 60px}
   .shot:nth-child(even) .shot-txt{order:2}
-  .shot img{width:100%;border-radius:14px;border:1px solid var(--border);box-shadow:0 24px 60px -30px #000}
+  .shot .frame{position:relative}
+  .shot .frame::before{content:"";position:absolute;inset:-16px;border-radius:24px;z-index:0;
+    background:radial-gradient(62% 62% at 50% 42%,color-mix(in srgb,var(--accent) 38%,transparent),transparent 72%);
+    filter:blur(26px);opacity:.55;animation:floaty 7s ease-in-out infinite}
+  .shot .frame img{position:relative;z-index:1;width:100%;border-radius:14px;border:1px solid var(--border);
+    box-shadow:0 24px 60px -30px #000;cursor:zoom-in;transition:transform .3s ease,box-shadow .3s ease}
+  .shot .frame:hover img{transform:translateY(-6px) scale(1.015);box-shadow:0 44px 90px -30px #000}
+  @keyframes floaty{0%,100%{transform:translateY(0)}50%{transform:translateY(-10px)}}
   .shot h3{font-size:24px;margin:0 0 10px}
   .shot ul{margin:10px 0 0;padding-left:18px;color:var(--muted)} .shot ul li{margin:5px 0}
+  /* lightbox */
+  .lb{position:fixed;inset:0;background:rgba(3,6,10,.88);backdrop-filter:blur(6px);display:none;
+    align-items:center;justify-content:center;z-index:100;padding:28px;cursor:zoom-out}
+  .lb.open{display:flex;animation:lbin .2s ease}
+  .lb img{max-width:95vw;max-height:92vh;border-radius:14px;border:1px solid var(--border);box-shadow:0 40px 120px -20px #000}
+  @keyframes lbin{from{opacity:0}to{opacity:1}}
 
   .privacy{background:linear-gradient(120deg,rgba(57,211,83,.08),transparent);border:1px solid color-mix(in srgb,var(--green) 30%,var(--border));border-radius:var(--radius);padding:32px;display:flex;gap:20px;align-items:center;flex-wrap:wrap}
   .privacy .big{font-size:40px}
@@ -92,14 +112,15 @@
   .doc:hover{border-color:var(--accent);transform:translateY(-3px)}
   .doc .t{font-weight:700;margin-bottom:4px}.doc .d{color:var(--muted);font-size:14px}
   pre{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:20px;overflow:auto;font-size:14px}
-  footer{border-top:1px solid var(--border);padding:36px 0;color:var(--muted);font-size:14px}
-  .foot{display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:14px}
+  footer{border-top:1px solid var(--border);padding:28px 0;color:var(--muted);font-size:14px}
+  .foot{display:flex;justify-content:flex-start;align-items:center;flex-wrap:wrap;gap:8px}
   @media(max-width:900px){
-    .hero .wrap{grid-template-columns:1fr;min-height:auto;gap:28px}
-    #graph{height:60vh}
+    .hero .wrap{grid-template-columns:1fr;min-height:auto;gap:24px;padding:24px 0}
+    .hero-graph{order:0}              /* text first, graph below, on mobile */
+    #graph{height:62vh}
     .grid,.docs-grid{grid-template-columns:1fr}
     .shot{grid-template-columns:1fr}.shot:nth-child(even) .shot-txt{order:0}
-    .nav-links{display:none}section{padding:64px 0}
+    .nav-links a:not(.btn-ghost){display:none}section{padding:64px 0}
   }
 </style>
 </head>
@@ -119,10 +140,21 @@
 <section class="hero"><div class="wrap">
   <div class="hero-text">
     <span class="eyebrow">◆ Local-first · open source · metadata only</span>
-    <h1>Every commit you've made, as one <span class="grad">living graph</span>.</h1>
+    <h1>Every <span class="uline">commit</span> you've made, as one <span class="grad">living graph</span>.</h1>
     <p class="sub">commit-grapher pulls your history from GitHub, Azure DevOps and more into a single
-      interactive network graph, a contribution heatmap with git-graph drill-down, and a stats
-      dashboard. Your code is never cloned.</p>
+      interactive network graph, a contribution heatmap, and a stats dashboard. Your code is never cloned.</p>
+    <p class="unify">Your code lives on GitHub, your work items in <b>Jira</b> or Azure Boards? commit-grapher
+      pulls every version-control host <b>and</b> your issue trackers together — all your scattered activity
+      under <b>one roof</b>.</p>
+    <div class="hero-provs">
+      <span class="pv"><img src="https://cdn.simpleicons.org/github/8b97a7" alt=""/>GitHub</span>
+      <span class="pv"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#3b8ceb" d="M0 8.877L2.247 5.91l8.405-3.416V.022l7.37 5.393L2.966 8.338v8.225L0 15.707zm24-4.45v14.651l-5.753 4.9-9.303-3.057v3.056l-5.978-2.398 15.057 1.798V6.075z"/></svg>Azure DevOps</span>
+      <span class="pv jira"><img src="https://cdn.simpleicons.org/jira/58a6ff" alt=""/>Jira · work items</span>
+      <span class="pv"><img src="https://cdn.simpleicons.org/gitlab/8b97a7" alt=""/>GitLab</span>
+      <span class="pv"><img src="https://cdn.simpleicons.org/bitbucket/8b97a7" alt=""/>Bitbucket</span>
+      <span class="pv"><img src="https://cdn.simpleicons.org/gitea/8b97a7" alt=""/>Gitea</span>
+      <span class="pv"><img src="https://cdn.simpleicons.org/forgejo/8b97a7" alt=""/>Codeberg</span>
+    </div>
     <div class="cta">
       <a class="btn btn-primary" href="https://github.com/fxerkan/commit-grapher">Get started — it's free</a>
       <a class="btn btn-ghost" href="#tour">Take the tour →</a>
@@ -131,7 +163,7 @@
   </div>
   <div class="hero-graph">
     <div id="graph"></div>
-    <div class="hint">drag a node · scroll to zoom — a real public GitHub graph</div>
+    <div class="hint">drag a node · scroll to zoom · hover for details — a real public graph</div>
   </div>
 </div></section>
 
@@ -224,7 +256,7 @@
   </div>
   <div class="providers">
     <span class="pill"><img src="https://cdn.simpleicons.org/github/ffffff" alt=""/>GitHub</span>
-    <span class="pill"><img src="https://cdn.simpleicons.org/azuredevops" alt=""/>Azure DevOps</span>
+    <span class="pill"><svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true"><path fill="#3b8ceb" d="M0 8.877L2.247 5.91l8.405-3.416V.022l7.37 5.393L2.966 8.338v8.225L0 15.707zm24-4.45v14.651l-5.753 4.9-9.303-3.057v3.056l-5.978-2.398 15.057 1.798V6.075z"/></svg>Azure DevOps</span>
     <span class="pill"><img src="https://cdn.simpleicons.org/jira" alt=""/>Jira · issues</span>
     <span class="pill"><img src="https://cdn.simpleicons.org/gitlab" alt=""/>GitLab</span>
     <span class="pill"><img src="https://cdn.simpleicons.org/bitbucket" alt=""/>Bitbucket</span>
@@ -263,9 +295,30 @@ cd frontend &amp;&amp; npm run build</code></pre>
 </div></section>
 
 <footer><div class="wrap foot">
-  <span>commit-graph<span class="grad">er</span> <b>v0.1.0</b> · open source · reads metadata only</span>
-  <span>by <a href="https://github.com/FXerkan" style="color:var(--accent)">FXerkan</a> · <a href="https://github.com/fxerkan/commit-grapher" style="color:var(--accent)">github.com/fxerkan/commit-grapher</a></span>
+  <span>commit-graph<span class="grad">er</span></span>
+  <span>·</span>
+  <a href="https://github.com/fxerkan/commit-grapher" style="color:var(--accent)">v0.1.0</a>
+  <span>·</span>
+  <span>by <a href="https://fxerkan.com" style="color:var(--accent)">FXerkan</a></span>
+  <span>·</span>
+  <span style="color:var(--muted)">Code more, worry less</span>
 </div></footer>
+
+<div class="lb" id="lb"><img alt="screenshot preview" /></div>
+
+<script>
+// Tour: wrap each screenshot in a glow frame + click to enlarge (lightbox).
+(function(){
+  const lb=document.getElementById("lb"), lbimg=lb.querySelector("img");
+  document.querySelectorAll(".shot > img").forEach(img=>{
+    const f=document.createElement("div"); f.className="frame";
+    img.parentNode.insertBefore(f,img); f.appendChild(img);
+    img.addEventListener("click",()=>{ lbimg.src=img.src; lb.classList.add("open"); });
+  });
+  lb.addEventListener("click",()=>lb.classList.remove("open"));
+  document.addEventListener("keydown",e=>{ if(e.key==="Escape") lb.classList.remove("open"); });
+})();
+</script>
 
 <script src="https://cdn.jsdelivr.net/npm/graphology@0.25.4/dist/graphology.umd.min.js"></script>
 <script src="https://cdn.jsdelivr.net/npm/graphology-layout-forceatlas2@0.10.1/build/graphology-layout-forceatlas2.min.js"></script>

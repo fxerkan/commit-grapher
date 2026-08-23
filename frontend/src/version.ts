@@ -6,4 +6,4 @@ declare const __APP_VERSION__: string;
 export const APP_NAME = "commit-grapher";
 export const APP_VERSION = __APP_VERSION__;
 export const REPO_URL = "https://github.com/fxerkan/commit-grapher";
-export const AUTHOR_URL = "https://github.com/FXerkan";
+export const AUTHOR_URL = "https://fxerkan.com";
