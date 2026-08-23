@@ -43,6 +43,7 @@ const TR: Record<string, string> = {
   "All languages": "Tüm diller",
   "All libraries": "Tüm kütüphaneler",
   "All agents": "Tüm ajanlar",
+  "All tags": "Tüm etiketler",
 
   // ---- filter panel chrome ----
   "Filters": "Filtreler",
@@ -144,8 +145,14 @@ const TR: Record<string, string> = {
   "Delete": "Sil",
   "Remove this account and its cached data?": "Bu hesap ve önbelleğe alınmış verileri kaldırılsın mı?",
   "Data — import, export & share": "Veri — içe/dışa aktar & paylaş",
-  "Everything is local. Move it between machines or publish a public snapshot.":
-    "Her şey yereldir. Makineler arasında taşıyın veya herkese açık bir anlık görüntü yayınlayın.",
+  "Everything is local. Move it between machines, or export the graph as an image.":
+    "Her şey yereldir. Makineler arasında taşıyın veya grafiği görüntü olarak dışa aktarın.",
+  "Export graph as PNG": "Grafiği PNG olarak dışa aktar",
+  "Download a PNG image of your current network graph (rendered headlessly with the current filters, layout & theme).":
+    "Mevcut ağ grafiğinizin PNG görüntüsünü indirin (geçerli filtreler, yerleşim ve tema ile arka planda işlenir).",
+  "Rendering…": "İşleniyor…",
+  "Graph PNG": "Grafik PNG",
+  "Exported graph PNG ({n} nodes, {e} edges).": "Grafik PNG dışa aktarıldı ({n} düğüm, {e} kenar).",
   "Export all data": "Tüm veriyi dışa aktar",
   "Full backup (accounts, repos, branches, PRs, commits) as JSON.": "JSON olarak tam yedek (hesaplar, depolar, dallar, PR’lar, commit’ler).",
   "Import data": "Veri içe aktar",
@@ -176,6 +183,109 @@ const TR: Record<string, string> = {
   "No commits for these filters.": "Bu filtreler için commit yok.",
   "close": "kapat",
   "Tag": "Etiket",
+
+  // ---- Stats: KPI labels ----
+  "Repositories": "Depolar",
+  "Authors": "Yazarlar",
+  "Pull Requests": "Pull Request’ler",
+  "Active Days": "Etkin Günler",
+  "Longest Streak": "En Uzun Seri",
+
+  // ---- Stats: chart titles + hints ----
+  "Languages": "Diller",
+  "share by repo language": "depo diline göre pay",
+  "AI vs Human commits": "YZ ve İnsan commit’leri",
+  "who committed": "kim commit’ledi",
+  "AI by agent": "Ajana göre YZ",
+  "click to filter": "filtrelemek için tıkla",
+  "AI role — commit vs code vs co-author": "YZ rolü — commit / kod / ortak yazar",
+  "Pulse — overview": "Nabız — genel bakış",
+  "Achievements": "Başarımlar",
+  "selected accounts": "seçili hesaplar",
+  "all accounts": "tüm hesaplar",
+  "Commits over time": "Zaman içinde commit’ler",
+  "Top repositories": "En iyi depolar",
+  "click to drill in": "detaya inmek için tıkla",
+  "Pull requests by state": "Duruma göre PR’lar",
+  "Night owl — commits by hour": "Gece kuşu — saate göre commit’ler",
+  "24h clock": "24 saat",
+  "Weekend warrior — commits by weekday": "Hafta sonu savaşçısı — güne göre commit’ler",
+  "Most-starred repositories": "En çok yıldızlı depolar",
+  "Tags": "Etiketler",
+
+  // ---- Stats: empty states ----
+  "No commits match these filters. Loosen the filters or widen the date range.":
+    "Bu filtrelere uyan commit yok. Filtreleri gevşetin veya tarih aralığını genişletin.",
+  "No language data yet — re-sync accounts.": "Henüz dil verisi yok — hesapları yeniden eşitleyin.",
+  "No AI-attributed commits in scope.": "Kapsamda YZ’ye atfedilen commit yok.",
+  "No AI commits in scope.": "Kapsamda YZ commit’i yok.",
+  "No achievements yet — re-sync a GitHub account.": "Henüz başarım yok — bir GitHub hesabını yeniden eşitleyin.",
+  "No pull requests in scope.": "Kapsamda pull request yok.",
+  "— re-sync accounts to populate stars, forks, releases, tags…":
+    "— yıldız, çatal, sürüm, etiketleri doldurmak için hesapları yeniden eşitleyin…",
+
+  // ---- Stats: repository-stat KPIs ----
+  "Stars": "Yıldızlar",
+  "Forks": "Çatallar",
+  "Releases": "Sürümler",
+  "Release DLs": "Sürüm İndirmeleri",
+  "Builds": "Derlemeler",
+  "Docker Pulls": "Docker Çekmeleri",
+  "npm DLs / mo": "npm İnd. / ay",
+  "Open Issues": "Açık Sorunlar",
+  "Watchers": "İzleyenler",
+
+  // ---- Stats: AI roles + pulse + fun-fact text ----
+  "AI committed": "YZ commit’ledi",
+  "AI wrote code": "YZ kod yazdı",
+  "AI co-authored": "YZ ortak yazdı",
+  "merged PRs": "birleştirilen PR",
+  "open": "açık",
+  "closed issues": "kapatılan sorun",
+  "{n} total pull requests in scope": "kapsamda toplam {n} pull request",
+  "The oldest commit on record:": "Kayıtlardaki en eski commit:",
+  "{n} shared repos": "{n} ortak depo",
+  "Fly solo — no shared repos yet.": "Tek başına — henüz ortak depo yok.",
+  "Most commits land around": "Commit’lerin çoğu şu saatte:",
+  "Busiest single day:": "En yoğun tek gün:",
+  "commits": "commit",
+  "Weekend vs weekday? See the chart below.": "Hafta sonu mu hafta içi mi? Aşağıdaki grafiğe bakın.",
+  "open ↗": "aç ↗",
+
+  // ---- GraphQL pane ----
+  "GraphQL query": "GraphQL sorgusu",
+  "deep-dive & filter the graph with GraphQL": "GraphQL ile grafiği derinlemesine inceleyin & filtreleyin",
+  "Clear graph filter": "Grafik filtresini temizle",
+  "Snippets": "Parçacıklar",
+  "Node counts": "Düğüm sayıları",
+  "All repos (by size)": "Tüm depolar (boyuta göre)",
+  "Pull requests": "Pull request’ler",
+  "AI-authored commits": "YZ yazımı commit’ler",
+  "Search by name": "İsme göre ara",
+  "Edges": "Kenarlar",
+  "Running…": "Çalışıyor…",
+  "Run": "Çalıştır",
+  "Apply to graph": "Grafiğe uygula",
+  "⌘/Ctrl+Enter to run": "Çalıştırmak için ⌘/Ctrl+Enter",
+  "Hide fields": "Alanları gizle",
+  "Available fields": "Kullanılabilir alanlar",
+  "none of these results are drawn on the canvas": "bu sonuçların hiçbiri tuvalde çizili değil",
+  "result nodes, none on the canvas — commit nodes appear only when you focus their repo (click it). Counts & off-canvas results still show in the panel →":
+    "sonuç düğümü, hiçbiri tuvalde değil — commit düğümleri yalnızca deposuna odaklandığınızda görünür (tıklayın). Sayımlar & tuval dışı sonuçlar yine panelde gösterilir →",
+  "// results appear here — Run a query, then \"Apply to graph\" to filter the canvas to matching nodes":
+    "// sonuçlar burada görünür — bir sorgu çalıştırın, sonra eşleşen düğümlere göre tuvali filtrelemek için \"Grafiğe uygula\"’yı kullanın",
+
+  // ---- graph canvas states + tooltip ----
+  "updating…": "güncelleniyor…",
+  "Loading graph…": "Grafik yükleniyor…",
+  "No nodes match these filters.": "Bu filtrelere uyan düğüm yok.",
+
+  // ---- Settings: intro animation ----
+  "Intro animation": "Giriş animasyonu",
+  "On the first graph load, reveal nodes step by step — repo by repo, then branches, PRs and commits — like the landing page.":
+    "İlk grafik yüklemesinde düğümleri adım adım göster — depo depo, sonra dallar, PR’lar ve commit’ler — açılış sayfasındaki gibi.",
+  "Intro duration": "Giriş süresi",
+  "How long the staged reveal takes, in seconds.": "Aşamalı gösterimin saniye cinsinden süresi.",
 
   // ---- onboarding ----
   "Welcome to": "Hoş geldiniz:",

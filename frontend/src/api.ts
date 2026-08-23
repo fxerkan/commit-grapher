@@ -48,6 +48,8 @@ export const api = {
     if (opts?.projects?.length) p.set("projects", opts.projects.join("||"));
     if (opts?.organizations?.length) p.set("organizations", opts.organizations.join("||"));
     if (opts?.account_ids?.length) p.set("account_ids", opts.account_ids.join(","));
+    if (opts?.start) p.set("start", opts.start);
+    if (opts?.end) p.set("end", opts.end);
     dimParams(p, opts);
     const qs = p.toString();
     return fetch("/api/graph" + (qs ? `?${qs}` : "")).then(j);

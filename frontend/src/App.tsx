@@ -56,7 +56,7 @@ export default function App() {
           {TABS.map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               className={tab === id ? "btn btn-active" : "btn"}
-              style={{ padding: "6px 12px", color: tab === id ? "#fff" : "var(--muted)" }}>{id === "settings" ? "⚙ " : ""}{t(label)}</button>
+              style={{ padding: "6px 12px", color: tab === id ? "#fff" : "var(--muted)" }}>{t(label)}</button>
           ))}
         </nav>
         <button onClick={() => setOnboard(true)} className="btn" style={{ marginLeft: "auto", color: "var(--muted)", padding: "6px 12px" }}>

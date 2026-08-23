@@ -56,16 +56,30 @@ def build(provider: str | None = None, focus_repo: int | None = None,
           authors: list[str] | None = None, repo_ids: list[int] | None = None,
           projects: list[str] | None = None, organizations: list[str] | None = None,
           account_ids: list[int] | None = None, languages: list[str] | None = None,
-          libraries: list[str] | None = None, ai_agents: list[str] | None = None) -> dict:
+          libraries: list[str] | None = None, ai_agents: list[str] | None = None,
+          start: str | None = None, end: str | None = None) -> dict:
     """provider filters accounts; focus_repo shows ONLY that repo's subgraph (commits expanded);
-    authors restricts to repos where those authors committed (and, when focused, to their commits).
-    Nodes carry repoId/project (+ author for commits) so the client can filter live."""
+    authors restricts to repos where those authors committed (and, when focused, to their commits);
+    start/end (YYYY-MM-DD) restrict to repos with commits in that window and count only those commits.
+    Nodes carry repoId/project (+ author for commits) and a `stats` dict for hover tooltips."""
     conn = db.connect()
     nodes: list[dict] = []
     edges: list[dict] = []
     added: set[str] = set()  # node keys already emitted (so cross-account Jira links only draw to real nodes)
     i = 0
     authors = [a for a in (authors or []) if a]
+
+    # Date window as a committed_at predicate (ISO strings compare lexically). `end` is
+    # made inclusive of the whole day. Reused for repo inclusion, size and commit expansion.
+    date_where, date_args = "", []
+    if start:
+        date_where += " AND committed_at >= ?"; date_args.append(start)
+    if end:
+        date_where += " AND committed_at <= ?"; date_args.append(end + "T23:59:59")
+    date_repo_ids: set[int] | None = None
+    if date_where:
+        date_repo_ids = {r["repo_id"] for r in conn.execute(
+            f"SELECT DISTINCT repo_id FROM commits WHERE 1=1{date_where}", date_args)}
 
     # Repos where at least one of the selected authors has committed.
     author_repo_ids: set[int] | None = None
@@ -125,6 +139,8 @@ def build(provider: str | None = None, focus_repo: int | None = None,
             repos = [r for r in repos if r["id"] in author_repo_ids]
         if ai_repo_ids is not None:
             repos = [r for r in repos if r["id"] in ai_repo_ids]
+        if date_repo_ids is not None:
+            repos = [r for r in repos if r["id"] in date_repo_ids]
         if lang_set is not None:
             repos = [r for r in repos if _repo_langs(r) & lang_set]
         if lib_set is not None:
@@ -141,6 +157,8 @@ def build(provider: str | None = None, focus_repo: int | None = None,
 
         akey = f"account:{acc['id']}"
         add_node(akey, f"{acc['display_name'] or acc['username']} ({acc['provider']})", "account", 14)
+        anode = nodes[-1]  # accumulate account-wide totals for its hover tooltip
+        acc_stats = {"repos": 0, "branches": 0, "prs": 0, "commits": 0}
 
         proj_repo_keys: dict[str, list[str]] = {}  # project -> visible repo node keys (for work items)
         for repo in repos:
@@ -149,8 +167,10 @@ def build(provider: str | None = None, focus_repo: int | None = None,
             rid = repo["id"]
             proj_repo_keys.setdefault(_proj, []).append(f"repo:{rid}")
             rkey = f"repo:{rid}"
-            ncommits = conn.execute("SELECT COUNT(*) n FROM commits WHERE repo_id=?", (rid,)).fetchone()["n"]
+            ncommits = conn.execute(
+                f"SELECT COUNT(*) n FROM commits WHERE repo_id=?{date_where}", (rid, *date_args)).fetchone()["n"]
             add_node(rkey, repo["full_name"], "repo", 6 + math.log1p(ncommits) * 3, repo_id=rid, project=_proj, organization=_org)
+            rnode = nodes[-1]
             edges.append({"key": f"{akey}->{rkey}", "source": akey, "target": rkey})
 
             branch_keys: dict[str, str] = {}
@@ -160,13 +180,19 @@ def build(provider: str | None = None, focus_repo: int | None = None,
                 add_node(bkey, br["name"], "branch", 3, repo_id=rid, project=_proj, organization=_org)
                 edges.append({"key": f"{rkey}->{bkey}", "source": rkey, "target": bkey})
 
+            nprs = 0
             for pr in conn.execute("SELECT * FROM pull_requests WHERE repo_id=?", (rid,)).fetchall():
+                nprs += 1
                 pkey = f"pr:{pr['id']}"
                 add_node(pkey, f"#{pr['number']} {pr['title'] or ''}".strip(), "pr", 4, repo_id=rid, project=_proj)
                 edges.append({"key": f"{rkey}->{pkey}", "source": rkey, "target": pkey})
                 tgt = branch_keys.get(pr["target_branch"])
                 if tgt:
                     edges.append({"key": f"{pkey}->{tgt}", "source": pkey, "target": tgt})
+
+            rnode["attributes"]["stats"] = {"commits": ncommits, "branches": len(branch_keys), "prs": nprs}
+            acc_stats["repos"] += 1; acc_stats["branches"] += len(branch_keys)
+            acc_stats["prs"] += nprs; acc_stats["commits"] += ncommits
 
             # Focused repo -> expand its commits as individual nodes (author/AI-scoped if set).
             if focus_repo == rid:
@@ -176,14 +202,16 @@ def build(provider: str | None = None, focus_repo: int | None = None,
                 if ai_agents:
                     cw.append(f"ai_agent IN ({','.join('?' * len(ai_agents))})"); ca += ai_agents
                 rows = conn.execute(
-                    f"SELECT sha, message, author, ai_agent FROM commits WHERE {' AND '.join(cw)} "
-                    "ORDER BY committed_at DESC LIMIT ?", (*ca, EXPAND_COMMIT_CAP)).fetchall()
+                    f"SELECT sha, message, author, ai_agent FROM commits WHERE {' AND '.join(cw)}{date_where} "
+                    "ORDER BY committed_at DESC LIMIT ?", (*ca, *date_args, EXPAND_COMMIT_CAP)).fetchall()
                 for cm in rows:
                     ckey = f"commit:{rid}:{cm['sha']}"
                     label = (cm["message"] or cm["sha"]).splitlines()[0][:48]
                     add_node(ckey, label, "commit", 2, repo_id=rid, author=cm["author"],
                              project=_proj, ai_agent=cm["ai_agent"])
                     edges.append({"key": f"{rkey}->{ckey}", "source": rkey, "target": ckey})
+
+        anode["attributes"]["stats"] = acc_stats
 
         # Work items / issues → hung off their project's visible repos (skipped when a single
         # repo is focused, to keep the drill-down about that repo's commits).

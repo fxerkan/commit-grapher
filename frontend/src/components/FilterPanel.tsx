@@ -96,7 +96,7 @@ export default function FilterPanel({
               <input type="date" className="cg-input" value={dateRange.end} min={dateRange.start || undefined} onChange={(e) => dateRange.setEnd(e.target.value)} />
               <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
                 {PRESETS.map(([lbl, d]) => (
-                  <button key={lbl} className="chip" onClick={() => preset(d)}>{lbl}</button>
+                  <button key={lbl} className="chip" onClick={() => preset(d)}>{t(lbl)}</button>
                 ))}
               </div>
             </div>

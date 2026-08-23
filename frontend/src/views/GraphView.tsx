@@ -50,7 +50,7 @@ const mkDrawLabel = (textColor: string, halo: string) =>
     ctx.fillStyle = textColor; ctx.fillText(data.label, x, y);
   };
 
-function LoadGraph({ data }: { data: GraphData }) {
+function LoadGraph({ data, focus }: { data: GraphData; focus: number | null }) {
   const loadGraph = useLoadGraph();
   const sigma = useSigma();
   useEffect(() => {
@@ -67,8 +67,15 @@ function LoadGraph({ data }: { data: GraphData }) {
     if (iterations > 0 && g.order > 1)
       forceAtlas2.assign(g, { iterations, settings: { gravity: st.gravity, scalingRatio: st.scaling } });
     loadGraph(g);
-    setTimeout(() => sigma.getCamera().animatedReset({ duration: 400 }), 60);  // fit to the loaded set
-  }, [data, loadGraph, sigma]);
+    // Focused a repo -> zoom in on that node so it fills the canvas (drill-down); otherwise
+    // reset the camera to fit the whole loaded set.
+    setTimeout(() => {
+      const cam = sigma.getCamera();
+      const nd = focus != null ? sigma.getNodeDisplayData(`repo:${focus}`) : null;
+      if (nd) cam.animate({ x: nd.x, y: nd.y, ratio: 0.4 }, { duration: 500 });
+      else cam.animatedReset({ duration: 400 });
+    }, 80);
+  }, [data, loadGraph, sigma, focus]);
   return null;
 }
 
@@ -98,23 +105,31 @@ function DragControl() {
   return null;
 }
 
-function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus, onFocus, showArrows, queryKeys }: {
+function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus, onFocus, showArrows, queryKeys, revealed, onHover }: {
   filters: Filters; branchSel: Set<string | number>; prSel: Set<string | number>;
   botSet: Set<string>; myNames: Set<string>; dataKey: string;
   focus: number | null; onFocus: (id: number | null) => void; showArrows: boolean;
-  queryKeys: Set<string> | null;
+  queryKeys: Set<string> | null; revealed: Set<string> | null;
+  onHover: (info: { key: string; attrs: any; x: number; y: number } | null) => void;
 }) {
   const sigma = useSigma();
   const reg = useRegisterEvents();
   const setSettings = useSetSettings();
   const [hovered, setHovered] = useState<string | null>(null);
 
-  useEffect(() => { setHovered(null); }, [dataKey]);
+  useEffect(() => { setHovered(null); onHover(null); }, [dataKey]);
 
   useEffect(() => {
     reg({
-      enterNode: (e) => setHovered(e.node),
-      leaveNode: () => setHovered(null),
+      enterNode: (e) => {
+        setHovered(e.node);
+        const g = sigma.getGraph();
+        if (!g.hasNode(e.node)) return;
+        const a = g.getNodeAttributes(e.node);
+        const vp = sigma.graphToViewport(a as any);
+        onHover({ key: e.node, attrs: a, x: vp.x, y: vp.y });
+      },
+      leaveNode: () => { setHovered(null); onHover(null); },
       clickNode: (e) => {
         if (!e.node.startsWith("repo:")) return;
         const id = Number(e.node.slice(5));
@@ -145,6 +160,7 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
     const hot = hovered && graph.hasNode(hovered) ? hovered : null;
     setSettings({
       nodeReducer: (node, data) => {
+        if (revealed && !revealed.has(node)) return { ...data, hidden: true };  // intro: not yet revealed
         if (!match(node, data)) return { ...data, hidden: true };
         const mine = myNames.size && data.author && myNames.has(data.author);
         // AI-attributed commit nodes tint purple so agent activity pops on a focused repo.
@@ -160,6 +176,7 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
       edgeReducer: (edge, data) => {
         const type = showArrows ? "arrow" : "line";
         const s = graph.source(edge), t = graph.target(edge);
+        if (revealed && (!revealed.has(s) || !revealed.has(t))) return { ...data, hidden: true };  // intro
         if (!match(s, graph.getNodeAttributes(s)) || !match(t, graph.getNodeAttributes(t)))
           return { ...data, hidden: true };
         if (hot) return graph.hasExtremity(edge, hot)
@@ -167,12 +184,75 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
         return { ...data, type };
       },
     });
-  }, [hovered, filters, branchSel, prSel, myNames, botSet, showArrows, queryKeys, sigma, setSettings]);
+  }, [hovered, filters, branchSel, prSel, myNames, botSet, showArrows, queryKeys, revealed, sigma, setSettings]);
   return null;
+}
+
+// Reveal order for the intro animation: interleave accounts round-robin so several subtrees
+// grow in parallel; within each account go repo → its branches/PRs/work items, repo by repo.
+function revealOrder(data: GraphData): string[] {
+  const children = new Map<string, string[]>();
+  data.edges.forEach((e) => { const a = children.get(e.source) || []; a.push(e.target); children.set(e.source, a); });
+  const typeOf = new Map(data.nodes.map((n) => [n.key, n.attributes.nodeType as string]));
+  const seen = new Set<string>();
+  const seqs: string[][] = [];
+  for (const acc of data.nodes.filter((n) => n.attributes.nodeType === "account")) {
+    const seq: string[] = [];
+    const push = (k: string) => { if (!seen.has(k)) { seen.add(k); seq.push(k); } };
+    push(acc.key);
+    const kids = children.get(acc.key) || [];
+    for (const repo of kids.filter((k) => typeOf.get(k) === "repo")) {
+      push(repo);
+      for (const c of children.get(repo) || []) push(c);   // branches, PRs, work items
+    }
+    for (const wi of kids.filter((k) => typeOf.get(k) === "workitem")) push(wi);  // Jira issues
+    if (seq.length) seqs.push(seq);
+  }
+  // Round-robin across account sequences for the "parallel" feel.
+  const order: string[] = [];
+  for (let i = 0; seqs.some((s) => i < s.length); i++)
+    for (const s of seqs) if (i < s.length) order.push(s[i]);
+  data.nodes.forEach((n) => { if (!seen.has(n.key)) order.push(n.key); });  // any orphans last
+  return order;
 }
 
 // --- sidebar control styling (for the graph-specific extras rendered inside FilterPanel) ---
 const box: React.CSSProperties = { width: "100%", padding: "7px 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--fg)" };
+
+// Floating hover card. Positioned at the node's viewport coords (relative to the graph container),
+// showing the node's label, type and the aggregate stats the backend attached (commits/PRs/…).
+function NodeTooltip({ info, t }: { info: { key: string; attrs: any; x: number; y: number }; t: (s: string) => string }) {
+  const a = info.attrs;
+  const type = a.nodeType as NodeType;
+  const st = a.stats || {};
+  const rows: [string, React.ReactNode][] = [];
+  if (type === "account") rows.push(["Repos", st.repos ?? 0]);
+  if (st.commits != null) rows.push(["Commits", (st.commits as number).toLocaleString()]);
+  if (st.branches != null) rows.push(["Branches", st.branches]);
+  if (st.prs != null) rows.push(["PRs", st.prs]);
+  if (type === "commit") {
+    if (a.author) rows.push(["Author", a.author]);
+    if (a.aiAgent) rows.push(["AI Agent", a.aiAgent]);
+  }
+  return (
+    <div style={{
+      position: "absolute", left: info.x + 14, top: info.y + 14, zIndex: 10, pointerEvents: "none",
+      maxWidth: 300, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 8,
+      boxShadow: "0 8px 24px #0009", padding: "8px 10px", fontSize: 12, color: "var(--fg)",
+    }}>
+      <div style={{ display: "flex", alignItems: "center", gap: 6, marginBottom: rows.length ? 6 : 0 }}>
+        <span style={{ width: 9, height: 9, borderRadius: 3, background: TYPE_COLOR[type], flex: "0 0 auto" }} />
+        <b style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.label}</b>
+        <span style={{ color: "var(--muted)", fontSize: 10, textTransform: "uppercase", flex: "0 0 auto" }}>{t(TYPE_LABEL[type] || type)}</span>
+      </div>
+      {rows.map(([k, v]) => (
+        <div key={k} style={{ display: "flex", justifyContent: "space-between", gap: 16, lineHeight: 1.6 }}>
+          <span style={{ color: "var(--muted)" }}>{t(k)}</span><b style={{ fontVariantNumeric: "tabular-nums" }}>{v}</b>
+        </div>
+      ))}
+    </div>
+  );
+}
 
 export default function GraphView() {
   const t = useT();
@@ -197,6 +277,11 @@ export default function GraphView() {
   const [languages, setLanguages] = useState<Set<string | number>>(new Set());
   const [libraries, setLibraries] = useState<Set<string | number>>(new Set());
   const [aiAgents, setAiAgents] = useState<Set<string | number>>(new Set());
+  const [start, setStart] = useState("");
+  const [end, setEnd] = useState("");
+  const [hover, setHover] = useState<{ key: string; attrs: any; x: number; y: number } | null>(null);
+  const [revealed, setRevealed] = useState<Set<string> | null>(null);  // intro reveal gate (null = all shown)
+  const introRan = useRef(false);
   // client-side filters (branch/PR selections + node types/search/human-AI)
   const [branchSel, setBranchSel] = useState<Set<string | number>>(new Set());
   const [prSel, setPrSel] = useState<Set<string | number>>(new Set());
@@ -244,11 +329,36 @@ export default function GraphView() {
       languages: languages.size ? [...languages].map(String) : undefined,
       libraries: libraries.size ? [...libraries].map(String) : undefined,
       ai_agents: aiAgents.size ? [...aiAgents].map(String) : undefined,
+      start: start || undefined, end: end || undefined,
     }).then((d) => { setData(d); setErr(null); }).catch((e) => setErr(e.message)).finally(() => setUpdating(false));
-  }, [providerStr, focus, JSON.stringify(effectiveAuthors), JSON.stringify([...repos]), JSON.stringify([...projects]), JSON.stringify([...organizations]), JSON.stringify([...accountIds]), JSON.stringify([...languages]), JSON.stringify([...libraries]), JSON.stringify([...aiAgents])]);
+  }, [providerStr, focus, JSON.stringify(effectiveAuthors), JSON.stringify([...repos]), JSON.stringify([...projects]), JSON.stringify([...organizations]), JSON.stringify([...accountIds]), JSON.stringify([...languages]), JSON.stringify([...libraries]), JSON.stringify([...aiAgents]), start, end]);
+
+  // Intro: on the FIRST full-graph load (no focus), reveal nodes step by step, several
+  // account subtrees growing in parallel. Runs once per mount; Settings toggles it + its duration.
+  useEffect(() => {
+    if (!data || introRan.current) return;
+    introRan.current = true;
+    const st = getSettings();
+    // Skip on tiny graphs (nothing to stage) and on truly massive ones (re-rendering the whole
+    // WebGL scene ~12×/s would freeze the tab). ponytail: 4000 is a heuristic; the user can also
+    // turn the intro off or shorten it in Settings.
+    if (!st.introAnimation || focus != null || data.nodes.length < 4 || data.nodes.length > 4000) { setRevealed(null); return; }
+    const order = revealOrder(data);
+    const fps = 12, ticks = Math.max(1, Math.round((st.introSeconds || 6) * fps));
+    const per = Math.ceil(order.length / ticks);
+    const set = new Set<string>();
+    setRevealed(new Set());
+    let idx = 0;
+    const iv = setInterval(() => {
+      for (let k = 0; k < per && idx < order.length; k++, idx++) set.add(order[idx]);
+      setRevealed(new Set(set));
+      if (idx >= order.length) { clearInterval(iv); setTimeout(() => setRevealed(null), 150); }
+    }, 1000 / fps);
+    return () => clearInterval(iv);
+  }, [data, focus]);
 
   const botSet = useMemo(() => new Set((facets?.authors || []).filter((a) => a.bot).map((a) => a.name)), [facets]);
-  const dataKey = `${providerStr}|${focus}|${[...repos]}|${[...projects]}|${[...organizations]}|${[...accountIds]}|${effectiveAuthors}|${[...languages]}|${[...libraries]}|${[...aiAgents]}`;
+  const dataKey = `${providerStr}|${focus}|${[...repos]}|${[...projects]}|${[...organizations]}|${[...accountIds]}|${effectiveAuthors}|${[...languages]}|${[...libraries]}|${[...aiAgents]}|${start}|${end}`;
   const theme = document.documentElement.dataset.theme || "dark";
   const textColor = theme === "light" ? "#1f2328" : "#e6edf3";
   const halo = theme === "light" ? "#ffffffcc" : "#0d1117cc";
@@ -373,21 +483,23 @@ export default function GraphView() {
         onApply={applyQuery} applied={queryKeys != null} />
       <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden", gap: 12, padding: 12 }}>
         <FilterPanel dims={dims} open={open} onOpenChange={setOpen} activeCount={activeCount}
-          extra={extra} footer={footer} width={width} onWidthChange={setWidth} />
+          extra={extra} footer={footer} width={width} onWidthChange={setWidth}
+          dateRange={{ start, end, setStart, setEnd }} />
 
         <div style={{ flex: 1, minWidth: 0, overflow: "hidden", position: "relative" }}>
-          {updating && <div style={{ position: "absolute", top: 10, right: 14, zIndex: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", fontSize: 12, color: "var(--muted)" }}>updating…</div>}
+          {updating && <div style={{ position: "absolute", top: 10, right: 14, zIndex: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", fontSize: 12, color: "var(--muted)" }}>{t("updating…")}</div>}
           {!data ? (
-            <div style={{ padding: 40 }}>Loading graph…</div>
+            <div style={{ padding: 40 }}>{t("Loading graph…")}</div>
           ) : data.nodes.length === 0 ? (
-            <div style={{ padding: 40 }}>No nodes match these filters.</div>
+            <div style={{ padding: 40 }}>{t("No nodes match these filters.")}</div>
           ) : (
             <ErrorBoundary>
               <SigmaContainer key={theme} style={{ height: "100%", background: "var(--bg)" }} settings={sigmaSettings}>
-                <LoadGraph data={data} />
+                <LoadGraph data={data} focus={focus} />
                 <DragControl />
-                <Controller filters={filters} branchSel={branchSel} prSel={prSel} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} queryKeys={queryKeys} />
+                <Controller filters={filters} branchSel={branchSel} prSel={prSel} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} queryKeys={queryKeys} revealed={revealed} onHover={setHover} />
               </SigmaContainer>
+              {hover && <NodeTooltip info={hover} t={t} />}
             </ErrorBoundary>
           )}
         </div>

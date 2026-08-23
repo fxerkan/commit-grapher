@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { api } from "../api";
+import { useT } from "../i18n";
 
 // Ready-to-run queries. The backend schema (graphql_api.SDL) exposes: nodes(...), edges(limit),
 // count(type). Node fields: key label type size repoId author project organization aiAgent.
@@ -20,9 +21,10 @@ const PRESETS: { name: string; query: string }[] = [
   { name: "Pull requests", query: `{
   nodes(type: "pr") { key label repoId project }
 }` },
-  { name: "AI-authored commits", query: `# commits are queryable only for the FOCUSED repo — click a repo on the canvas first
+  { name: "AI-authored commits", query: `# commit nodes are read live from the DB — no need to focus a repo first
 {
-  nodes(type: "commit") { key label author aiAgent }
+  nodes(type: "commit", aiOnly: true, limit: 50) { key label author aiAgent }
+  aiCommits: count(type: "commit", aiOnly: true)
 }` },
   { name: "Search by name", query: `{
   nodes(search: "api") { key label type project }
@@ -63,6 +65,7 @@ export default function GraphQLPane({ provider, repoId, nodeKeys, onApply, appli
   provider?: string; repoId?: number; nodeKeys: Set<string>;
   onApply: (keys: string[] | null) => void; applied: boolean;
 }) {
+  const t = useT();
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(DEFAULT);
   const [result, setResult] = useState<string>("");
@@ -94,14 +97,14 @@ export default function GraphQLPane({ provider, repoId, nodeKeys, onApply, appli
     <div style={{ borderBottom: "1px solid var(--border)", background: "var(--panel)" }}>
       <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "6px 12px" }}>
         <button onClick={() => setOpen((o) => !o)} className="btn" style={{ ...btn, fontWeight: 600 }}>
-          {open ? "▾" : "▸"} GraphQL query
+          {open ? "▾" : "▸"} {t("GraphQL query")}
         </button>
         <span style={{ color: "var(--muted)", fontSize: 12 }}>
-          deep-dive & filter the graph with GraphQL
+          {t("deep-dive & filter the graph with GraphQL")}
         </span>
         {applied && (
           <button onClick={() => onApply(null)} style={{ ...btn, marginLeft: "auto", borderColor: "var(--accent)", color: "var(--accent)" }}>
-            Clear graph filter ✕
+            {t("Clear graph filter")} ✕
           </button>
         )}
       </div>
@@ -110,9 +113,9 @@ export default function GraphQLPane({ provider, repoId, nodeKeys, onApply, appli
         <div style={{ padding: "0 12px 12px", display: "grid", gridTemplateColumns: "1fr 1fr", gap: 12 }}>
           <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
             <div style={{ display: "flex", flexWrap: "wrap", gap: 4 }}>
-              <span style={{ color: "var(--muted)", fontSize: 11, alignSelf: "center", marginRight: 2 }}>Snippets:</span>
+              <span style={{ color: "var(--muted)", fontSize: 11, alignSelf: "center", marginRight: 2 }}>{t("Snippets")}:</span>
               {PRESETS.map((p) => (
-                <button key={p.name} style={btn} onClick={() => { setQuery(p.query); setError(""); setResult(""); }}>{p.name}</button>
+                <button key={p.name} style={btn} onClick={() => { setQuery(p.query); setError(""); setResult(""); }}>{t(p.name)}</button>
               ))}
             </div>
             <textarea value={query} onChange={(e) => setQuery(e.target.value)} spellCheck={false}
@@ -121,20 +124,20 @@ export default function GraphQLPane({ provider, repoId, nodeKeys, onApply, appli
                 border: "1px solid var(--border)", background: "var(--bg)", color: "var(--fg)", resize: "vertical" }} />
             <div style={{ display: "flex", gap: 8, alignItems: "center" }}>
               <button onClick={run} disabled={running} style={{ ...btn, background: "var(--accent)", color: "#fff", borderColor: "var(--accent)", fontWeight: 600 }}>
-                {running ? "Running…" : "Run ▶"}
+                {running ? t("Running…") : `${t("Run")} ▶`}
               </button>
               <button style={btn} disabled={!onCanvas.length} onClick={() => onApply(onCanvas)}
-                title={lastKeys.length && !onCanvas.length ? "none of these results are drawn on the canvas" : ""}>
-                Apply to graph {onCanvas.length ? `(${onCanvas.length})` : ""}
+                title={lastKeys.length && !onCanvas.length ? t("none of these results are drawn on the canvas") : ""}>
+                {t("Apply to graph")} {onCanvas.length ? `(${onCanvas.length})` : ""}
               </button>
-              <span style={{ color: "var(--muted)", fontSize: 11 }}>⌘/Ctrl+Enter to run</span>
+              <span style={{ color: "var(--muted)", fontSize: 11 }}>{t("⌘/Ctrl+Enter to run")}</span>
               <button style={{ ...btn, marginLeft: "auto" }} onClick={() => setShowFields((s) => !s)}>
-                {showFields ? "Hide fields" : "Available fields"}
+                {showFields ? t("Hide fields") : t("Available fields")}
               </button>
             </div>
             {lastKeys.length > 0 && onCanvas.length === 0 && (
               <div style={{ color: "#d29922", fontSize: 11 }}>
-                {lastKeys.length} result node{lastKeys.length > 1 ? "s" : ""}, none on the canvas — commit nodes appear only when you focus their repo (click it). Counts &amp; off-canvas results still show in the panel →
+                {lastKeys.length} {t("result nodes, none on the canvas — commit nodes appear only when you focus their repo (click it). Counts & off-canvas results still show in the panel →")}
               </div>
             )}
             {showFields && (
@@ -150,7 +153,7 @@ export default function GraphQLPane({ provider, repoId, nodeKeys, onApply, appli
             {error && <pre style={{ margin: 0, color: "#f85149", fontFamily: mono, fontSize: 12, whiteSpace: "pre-wrap" }}>{error}</pre>}
             <pre style={{ margin: 0, flex: 1, overflow: "auto", maxHeight: 220, fontFamily: mono, fontSize: 12,
               padding: 8, borderRadius: 6, border: "1px solid var(--border)", background: "var(--bg)", color: "var(--fg)" }}>
-              {result || "// results appear here — Run a query, then \"Apply to graph\" to filter the canvas to matching nodes"}
+              {result || t("// results appear here — Run a query, then \"Apply to graph\" to filter the canvas to matching nodes")}
             </pre>
           </div>
         </div>

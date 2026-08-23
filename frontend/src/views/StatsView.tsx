@@ -43,17 +43,17 @@ function PulseCard({ pulse }: { pulse: ChartStats["pulse"] }) {
     <div style={{ display: "flex", flexDirection: "column", gap: 14, fontSize: 13 }}>
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-          <span>🔀 <b>{pulse.prs_merged}</b> merged PRs</span><span style={{ color: "var(--muted)" }}>{pulse.prs_open} open</span>
+          <span>🔀 <b>{pulse.prs_merged}</b> {t("merged PRs")}</span><span style={{ color: "var(--muted)" }}>{pulse.prs_open} {t("open")}</span>
         </div>
         <Bar a={pulse.prs_merged} b={pulse.prs_open} ca="#8250df" cb="#3fb950" />
       </div>
       <div>
         <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-          <span>🐛 <b>{pulse.issues_closed}</b> closed issues</span><span style={{ color: "var(--muted)" }}>{pulse.issues_open} open</span>
+          <span>🐛 <b>{pulse.issues_closed}</b> {t("closed issues")}</span><span style={{ color: "var(--muted)" }}>{pulse.issues_open} {t("open")}</span>
         </div>
         <Bar a={pulse.issues_closed} b={pulse.issues_open} ca="#8250df" cb="#f85149" />
       </div>
-      <div style={{ color: "var(--muted)" }}>{pulse.prs_total} total pull requests in scope</div>
+      <div style={{ color: "var(--muted)" }}>{t("{n} total pull requests in scope", { n: pulse.prs_total })}</div>
     </div>
   );
 }
@@ -77,7 +77,7 @@ function Kpi({ num, label, icon }: { num: React.ReactNode; label: string; icon: 
   return (
     <div className="card kpi">
       <div className="kpi-num">{num}</div>
-      <div className="kpi-label">{label}</div>
+      <div className="kpi-label">{t(label)}</div>
       <span className="kpi-icon">{icon}</span>
     </div>
   );
@@ -94,8 +94,8 @@ function ChartCard({ title, hint, children }: { title: string; hint?: string; ch
   return (
     <div className="card">
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, marginBottom: 6 }}>
-        <b style={{ fontSize: 14 }}>{title}</b>
-        {hint && <span style={{ fontSize: 11, color: "var(--muted)" }}>{hint}</span>}
+        <b style={{ fontSize: 14 }}>{t(title)}</b>
+        {hint && <span style={{ fontSize: 11, color: "var(--muted)" }}>{t(hint)}</span>}
       </div>
       {children}
     </div>
@@ -295,7 +295,7 @@ export default function StatsView() {
     tooltip: { trigger: "item", formatter: "{b}: {c} ({d}%)" }, legend: { bottom: 0, textStyle: { color: txt } },
     series: [{
       type: "pie", radius: ["45%", "70%"], center: ["50%", "45%"], label: { color: txt },
-      data: (s?.ai?.human_vs_ai || []).map((d) => ({ ...d, itemStyle: { color: d.name === "AI" ? "#bc8cff" : "#3fb950" } })),
+      data: (s?.ai?.human_vs_ai || []).map((d) => ({ ...d, name: t(d.name === "AI" ? "AI" : "Human"), itemStyle: { color: d.name === "AI" ? "#bc8cff" : "#3fb950" } })),
     }],
   }), [s, txt]);
   const aiAgentsBar = useMemo(() => {
@@ -310,7 +310,7 @@ export default function StatsView() {
 
   if (err) return <div style={{ padding: 40, color: "#f85149" }}>Error: {err}</div>;
 
-  const t = s?.totals;
+  const tot = s?.totals;
   const f = s?.facts;
   const rs = s?.repo_stats;
   const owl = s?.night_owl_hour ?? 0;
@@ -324,21 +324,21 @@ export default function StatsView() {
         dateRange={{ start, end, setStart, setEnd }} />
 
       <div className="stats-main">
-        {!s || !s.totals ? <div style={{ padding: 40, color: "var(--muted)" }}>Loading…</div> : (
+        {!s || !s.totals ? <div style={{ padding: 40, color: "var(--muted)" }}>{t("Loading…")}</div> : (
           <div className={loading ? "stats-loading" : undefined} style={{ display: "flex", flexDirection: "column", gap: 16 }}>
             <Section title="KPI Cards" open={sec.kpi} onToggle={() => toggle("kpi")}>
               <div className="kpi-grid">
-                <Kpi num={t!.commits.toLocaleString()} label="Commits" icon="🧬" />
-                <Kpi num={t!.repos.toLocaleString()} label="Repositories" icon="📦" />
-                <Kpi num={t!.authors.toLocaleString()} label="Authors" icon="🧑‍💻" />
-                <Kpi num={t!.prs.toLocaleString()} label="Pull Requests" icon="🔀" />
-                <Kpi num={t!.active_days.toLocaleString()} label="Active Days" icon="📅" />
-                <Kpi num={`${t!.streak}🔥`} label="Longest Streak" icon="⚡" />
+                <Kpi num={tot!.commits.toLocaleString()} label="Commits" icon="🧬" />
+                <Kpi num={tot!.repos.toLocaleString()} label="Repositories" icon="📦" />
+                <Kpi num={tot!.authors.toLocaleString()} label="Authors" icon="🧑‍💻" />
+                <Kpi num={tot!.prs.toLocaleString()} label="Pull Requests" icon="🔀" />
+                <Kpi num={tot!.active_days.toLocaleString()} label="Active Days" icon="📅" />
+                <Kpi num={`${tot!.streak}🔥`} label="Longest Streak" icon="⚡" />
               </div>
             </Section>
 
-            {t!.commits === 0 ? (
-              <div className="card" style={{ color: "var(--muted)" }}>No commits match these filters. Loosen the filters or widen the date range.</div>
+            {tot!.commits === 0 ? (
+              <div className="card" style={{ color: "var(--muted)" }}>{t("No commits match these filters. Loosen the filters or widen the date range.")}</div>
             ) : (
               <>
                 <Section title="Languages, AI & Pulse" open={sec.insights} onToggle={() => toggle("insights")}>
@@ -346,7 +346,7 @@ export default function StatsView() {
                   <ChartCard title="Languages" hint="share by repo language">
                     {(s.languages?.length ?? 0) > 0
                       ? <LanguagesBar data={s.languages} />
-                      : <div style={{ color: "var(--muted)", fontSize: 13 }}>No language data yet — re-sync accounts.</div>}
+                      : <div style={{ color: "var(--muted)", fontSize: 13 }}>{t("No language data yet — re-sync accounts.")}</div>}
                   </ChartCard>
                   <ChartCard title="AI vs Human commits" hint="who committed">
                     <EChart option={aiDonut} height={240} />
@@ -354,15 +354,15 @@ export default function StatsView() {
                   <ChartCard title="AI by agent" hint="click to filter">
                     {(s.ai?.by_agent?.length ?? 0) > 0
                       ? <EChart option={aiAgentsBar} height={240} onClick={(p: any) => p.name && add(aiAgents, setAiAgents, p.name)} />
-                      : <div style={{ color: "var(--muted)", fontSize: 13 }}>No AI-attributed commits in scope.</div>}
+                      : <div style={{ color: "var(--muted)", fontSize: 13 }}>{t("No AI-attributed commits in scope.")}</div>}
                   </ChartCard>
                   <ChartCard title="AI role — commit vs code vs co-author">
                     <div style={{ display: "flex", flexDirection: "column", gap: 10, fontSize: 13, paddingTop: 6 }}>
                       {(s.ai?.by_role?.length ?? 0) > 0 ? s.ai.by_role.map((r) => (
                         <div key={r.name} style={{ display: "flex", justifyContent: "space-between" }}>
-                          <span>{ROLE_EMOJI[r.name] || "🤖"} {ROLE_LABEL[r.name] || r.name}</span><b>{r.value.toLocaleString()}</b>
+                          <span>{ROLE_EMOJI[r.name] || "🤖"} {t(ROLE_LABEL[r.name] || r.name)}</span><b>{r.value.toLocaleString()}</b>
                         </div>
-                      )) : <div style={{ color: "var(--muted)" }}>No AI commits in scope.</div>}
+                      )) : <div style={{ color: "var(--muted)" }}>{t("No AI commits in scope.")}</div>}
                     </div>
                   </ChartCard>
                   <ChartCard title="Pulse — overview"><PulseCard pulse={s.pulse} /></ChartCard>
@@ -376,7 +376,7 @@ export default function StatsView() {
                           </div>
                         ))}
                       </div>
-                    ) : <div style={{ color: "var(--muted)", fontSize: 13 }}>No achievements yet — re-sync a GitHub account.</div>}
+                    ) : <div style={{ color: "var(--muted)", fontSize: 13 }}>{t("No achievements yet — re-sync a GitHub account.")}</div>}
                   </ChartCard>
                 </div>
                 </Section>
@@ -389,16 +389,16 @@ export default function StatsView() {
                       <div style={{ fontStyle: "italic", maxHeight: 88, overflow: "hidden" }}>“{f.longest_commit.message.split("\n")[0].slice(0, 220)}”</div>
                       <div style={{ color: "var(--muted)", marginTop: 6 }}>
                         {f.longest_commit.len.toLocaleString()} chars · {f.longest_commit.author || "?"} · {f.longest_commit.repo}
-                        {f.longest_commit.url && <> · <a href={f.longest_commit.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>open ↗</a></>}
+                        {f.longest_commit.url && <> · <a href={f.longest_commit.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{t("open ↗")}</a></>}
                       </div>
                     </> : "—"}
                   </Fact>
                   <Fact emoji="🌌" title="A long time ago, in a repo far, far away…">
                     {f?.far_away_commit ? <>
-                      <div>The oldest commit on record: <b>{ago(f.far_away_commit.committed_at)}</b> ({f.far_away_commit.committed_at.slice(0, 10)})</div>
+                      <div>{t("The oldest commit on record:")} <b>{ago(f.far_away_commit.committed_at)}</b> ({f.far_away_commit.committed_at.slice(0, 10)})</div>
                       <div style={{ color: "var(--muted)", marginTop: 6 }}>
                         {f.far_away_commit.author || "?"} · {f.far_away_commit.repo}
-                        {f.far_away_commit.url && <> · <a href={f.far_away_commit.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>open ↗</a></>}
+                        {f.far_away_commit.url && <> · <a href={f.far_away_commit.url} target="_blank" rel="noreferrer" style={{ color: "var(--accent)" }}>{t("open ↗")}</a></>}
                       </div>
                       <div style={{ marginTop: 6, fontStyle: "italic" }}>“{f.far_away_commit.message.split("\n")[0].slice(0, 120)}”</div>
                     </> : "—"}
@@ -408,15 +408,15 @@ export default function StatsView() {
                       <div>#{f.far_away_pr.number} <b>{ago(f.far_away_pr.created_at)}</b> · <span style={{ color: "var(--muted)" }}>{f.far_away_pr.state}</span></div>
                       <div style={{ marginTop: 6, fontStyle: "italic" }}>“{(f.far_away_pr.title || "").slice(0, 120)}”</div>
                       <div style={{ color: "var(--muted)", marginTop: 6 }}>{f.far_away_pr.author || "?"} · {f.far_away_pr.repo}</div>
-                    </> : "No pull requests in scope."}
+                    </> : t("No pull requests in scope.")}
                   </Fact>
                   <Fact emoji="👯" title="Code Besties — most co-committed peers">
                     {f?.besties?.length ? f.besties.map((b, i) => (
                       <div key={i} style={{ marginBottom: 4 }}>
                         <span className="clickable" style={{ color: "var(--accent)" }} onClick={() => setAuthors(S([b.a, b.b]))}>{b.a} ✦ {b.b}</span>
-                        <span style={{ color: "var(--muted)" }}> — {b.shared} shared repo{b.shared > 1 ? "s" : ""}</span>
+                        <span style={{ color: "var(--muted)" }}> — {t("{n} shared repos", { n: b.shared })}</span>
                       </div>
-                    )) : "Fly solo — no shared repos yet."}
+                    )) : t("Fly solo — no shared repos yet.")}
                   </Fact>
                   <Fact emoji="🪦" title="The Graveyard — R.I.P dormant repos">
                     {f?.graveyard?.length ? f.graveyard.map((g) => (
@@ -427,16 +427,16 @@ export default function StatsView() {
                     )) : "—"}
                   </Fact>
                   <Fact emoji="🌙" title="Night Owl & Busy Day">
-                    <div>Most commits land around <b>{String(owl).padStart(2, "0")}:00</b> {owl < 6 || owl >= 22 ? "🦉" : owl < 12 ? "🌅" : owl < 18 ? "☀️" : "🌆"}</div>
-                    {s.busiest_day && <div style={{ marginTop: 6 }}>Busiest single day: <b>{s.busiest_day.day}</b> — {s.busiest_day.count} commits 🚀</div>}
-                    <div style={{ color: "var(--muted)", marginTop: 6 }}>Weekend vs weekday? See the chart below.</div>
+                    <div>{t("Most commits land around")} <b>{String(owl).padStart(2, "0")}:00</b> {owl < 6 || owl >= 22 ? "🦉" : owl < 12 ? "🌅" : owl < 18 ? "☀️" : "🌆"}</div>
+                    {s.busiest_day && <div style={{ marginTop: 6 }}>{t("Busiest single day:")} <b>{s.busiest_day.day}</b> — {s.busiest_day.count} {t("commits")} 🚀</div>}
+                    <div style={{ color: "var(--muted)", marginTop: 6 }}>{t("Weekend vs weekday? See the chart below.")}</div>
                   </Fact>
                 </div>
                 </Section>
                 )}
 
                 <Section title="Repository Stats" open={sec.repo} onToggle={() => toggle("repo")}
-                  right={!hasRepoStats ? <span style={{ fontSize: 12, color: "var(--muted)" }}>— re-sync accounts to populate stars, forks, releases, tags…</span> : undefined}>
+                  right={!hasRepoStats ? <span style={{ fontSize: 12, color: "var(--muted)" }}>{t("— re-sync accounts to populate stars, forks, releases, tags…")}</span> : undefined}>
                 {hasRepoStats && (
                   <div className="kpi-grid">
                     <Kpi num={fmt(rs!.stars)} label="Stars" icon="⭐" />

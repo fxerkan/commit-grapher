@@ -12,7 +12,7 @@ from __future__ import annotations
 
 from graphql import build_schema, graphql_sync
 
-from . import graph
+from . import db, graph
 
 SDL = """
 "A node in the network graph (account, repo, branch, pr, commit or workitem)."
@@ -36,13 +36,13 @@ type Edge {
 }
 
 type Query {
-  "Graph nodes, optionally filtered. `search` matches the label (case-insensitive)."
+  "Graph nodes, optionally filtered. `search` matches the label. commit nodes are read live from the DB (no need to focus a repo); `aiOnly: true` keeps only AI-attributed commits."
   nodes(type: String, author: String, project: String, organization: String,
-        aiAgent: String, repoId: Int, search: String, limit: Int = 1000): [Node!]!
+        aiAgent: String, aiOnly: Boolean = false, repoId: Int, search: String, limit: Int = 1000): [Node!]!
   "Graph edges (source/target are node keys)."
   edges(limit: Int = 5000): [Edge!]!
-  "Count of nodes, optionally of a single `type`."
-  count(type: String): Int!
+  "Count of nodes, optionally of a single `type`. commit counts are read live from the DB."
+  count(type: String, aiOnly: Boolean = false): Int!
 }
 """
 
@@ -62,14 +62,52 @@ def _flatten(nodes: list[dict]) -> list[dict]:
     return out
 
 
+def _commits_from_db(provider=None, author=None, aiAgent=None, aiOnly=False,
+                     repoId=None, search=None, limit=1000) -> list[dict]:
+    """Commit nodes read straight from the DB so they're queryable WITHOUT focusing a repo
+    (the canvas only expands commits on focus; GraphQL shouldn't have that limitation)."""
+    where, args = ["1=1"], []
+    if provider:  where.append("a.provider = ?"); args.append(provider)
+    if author:    where.append("c.author = ?"); args.append(author)
+    if aiAgent:   where.append("c.ai_agent = ?"); args.append(aiAgent)
+    if aiOnly:    where.append("c.ai_agent IS NOT NULL")
+    if repoId is not None: where.append("c.repo_id = ?"); args.append(repoId)
+    if search:    where.append("c.message LIKE ?"); args.append(f"%{search}%")
+    conn = db.connect()
+    rows = conn.execute(
+        f"""SELECT c.repo_id, c.sha, c.message, c.author, c.ai_agent, r.full_name
+            FROM commits c JOIN repos r ON r.id = c.repo_id JOIN accounts a ON a.id = r.account_id
+            WHERE {' AND '.join(where)} ORDER BY c.committed_at DESC LIMIT ?""",
+        (*args, max(0, limit))).fetchall()
+    conn.close()
+    return [{"key": f"commit:{r['repo_id']}:{r['sha']}",
+             "label": (r["message"] or r["sha"]).splitlines()[0][:48] if r["message"] else r["sha"],
+             "type": "commit", "size": 2, "repoId": r["repo_id"], "author": r["author"],
+             "project": r["full_name"].split("/", 1)[0], "organization": None,
+             "aiAgent": r["ai_agent"]} for r in rows]
+
+
+def _count_commits(provider=None, aiOnly=False) -> int:
+    where, args = ["1=1"], []
+    if provider: where.append("a.provider = ?"); args.append(provider)
+    if aiOnly:   where.append("c.ai_agent IS NOT NULL")
+    conn = db.connect()
+    n = conn.execute(f"SELECT COUNT(*) n FROM commits c JOIN repos r ON r.id=c.repo_id "
+                     f"JOIN accounts a ON a.id=r.account_id WHERE {' AND '.join(where)}", args).fetchone()["n"]
+    conn.close()
+    return n
+
+
 def _root(provider: str | None, focus_repo: int | None) -> dict:
-    # Mirror the canvas: commits only exist as nodes when a repo is focused, so pass focus_repo
-    # through — otherwise `nodes(type: "commit")` is always empty.
+    # account/repo/branch/pr/workitem come from the built graph; commits are read live from the
+    # DB (below) so `nodes(type:"commit")` works globally, not only for a focused repo.
     g = graph.build(provider=provider, focus_repo=focus_repo)
-    flat = _flatten(g["nodes"])
+    flat = [n for n in _flatten(g["nodes"]) if n["type"] != "commit"]
 
     def nodes(_info, type=None, author=None, project=None, organization=None,
-              aiAgent=None, repoId=None, search=None, limit=1000):
+              aiAgent=None, aiOnly=False, repoId=None, search=None, limit=1000):
+        if type == "commit":
+            return _commits_from_db(provider, author, aiAgent, aiOnly, repoId, search, limit)
         s = (search or "").lower()
         out = [n for n in flat
                if (type is None or n["type"] == type)
@@ -84,7 +122,9 @@ def _root(provider: str | None, focus_repo: int | None) -> dict:
     def edges(_info, limit=5000):
         return g["edges"][: max(0, limit)]
 
-    def count(_info, type=None):
+    def count(_info, type=None, aiOnly=False):
+        if type == "commit":
+            return _count_commits(provider, aiOnly)
         return sum(1 for n in flat if type is None or n["type"] == type)
 
     # graphql-core's default field resolver calls values that are callable, passing (info, **args).
@@ -112,7 +152,7 @@ if __name__ == "__main__":  # ponytail: one runnable check — schema + resolver
         return [x for x in flat if type is None or x["type"] == type]
     r = _g.graphql_sync(schema, '{ repos: count(type: "repo") all: count nodes(type: "repo") { key label } }',
                         root_value={"nodes": _nodes, "edges": lambda _i, **k: [], "count":
-                                    lambda _i, type=None: sum(1 for x in flat if type is None or x["type"] == type)})
+                                    lambda _i, type=None, **k: sum(1 for x in flat if type is None or x["type"] == type)})
     assert r.errors is None, r.errors
     assert r.data["repos"] == 1 and r.data["all"] == 2, r.data
     assert r.data["nodes"] == [{"key": "repo:1", "label": "a/b"}], r.data["nodes"]

@@ -80,7 +80,7 @@ export default function MultiSelect({
                 {o.count != null && <span style={{ color: "var(--muted)", fontSize: 11 }}>{o.count}</span>}
               </label>
             ))}
-            {shown.length === 0 && <div style={{ padding: 8, color: "var(--muted)", fontSize: 12 }}>no matches</div>}
+            {shown.length === 0 && <div style={{ padding: 8, color: "var(--muted)", fontSize: 12 }}>{options.length === 0 ? "no data yet" : "no matches"}</div>}
           </div>
         </div>
       )}

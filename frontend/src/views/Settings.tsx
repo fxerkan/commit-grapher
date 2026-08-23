@@ -4,6 +4,7 @@ import {
   ALL_NODE_TYPES, AppSettings, NodeType, Physics, useSettings, setSettings, resetSettings, DEFAULTS,
 } from "../settings";
 import { t, LANGS } from "../i18n";
+import { exportGraphPNG } from "../graphExport";
 
 const PROVIDERS = ["github", "azure", "gitlab", "bitbucket", "gitea", "codeberg", "jira"];
 const NODE_LABEL: Record<NodeType, string> = {
@@ -128,19 +129,29 @@ export default function Settings() {
     set("defaultNodeTypes", (has ? s.defaultNodeTypes.filter((x) => x !== t) : [...s.defaultNodeTypes, t]) as NodeType[]);
   };
 
-  // Share: download the current network as a graphology snapshot (the format the Pages hero uses).
-  const [sharing, setSharing] = useState(false);
-  const shareSnapshot = async () => {
-    setSharing(true); setMsg(null);
+  // Export the full JSON backup via a blob (a plain <a download> to /api/export can stall on a
+  // large same-origin file in some browsers).
+  const exportAll = async () => {
+    setMsg(null);
     try {
-      const g = await api.graph();
-      const blob = new Blob([JSON.stringify(g)], { type: "application/json" });
+      const r = await fetch("/api/export");
+      if (!r.ok) throw new Error(`export failed (${r.status})`);
+      const blob = await r.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
-      a.href = url; a.download = "public-graph.json"; a.click();
-      URL.revokeObjectURL(url);
-      setMsg(`Snapshot: ${g.nodes.length} nodes, ${g.edges.length} edges. Review for private names before publishing to a public site.`);
-    } catch (e: any) { setMsg(e.message); } finally { setSharing(false); }
+      a.href = url; a.download = "commit-grapher-export.json"; a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 2000);
+    } catch (e: any) { setMsg(e.message); }
+  };
+
+  // Render the current network graph headlessly and download it as a PNG image.
+  const [rendering, setRendering] = useState(false);
+  const exportPNG = async () => {
+    setRendering(true); setMsg(null);
+    try {
+      const r = await exportGraphPNG();
+      setMsg(t("Exported graph PNG ({n} nodes, {e} edges).", { n: r.nodes, e: r.edges }));
+    } catch (e: any) { setMsg(e.message); } finally { setRendering(false); }
   };
 
   return (
@@ -194,6 +205,14 @@ export default function Settings() {
         <Row label="Relationship arrows" hint="Draw directed arrows on edges by default.">
           <Switch on={s.showArrows} onChange={(v) => set("showArrows", v)} />
         </Row>
+        <Row label="Intro animation" hint="On the first graph load, reveal nodes step by step — repo by repo, then branches, PRs and commits — like the landing page.">
+          <Switch on={s.introAnimation} onChange={(v) => set("introAnimation", v)} />
+        </Row>
+        {s.introAnimation && (
+          <Row label="Intro duration" hint="How long the staged reveal takes, in seconds.">
+            <Slider value={s.introSeconds} min={2} max={20} step={1} onChange={(v) => set("introSeconds", v)} />
+          </Row>
+        )}
         <Row label="Node types shown by default" hint="Which node kinds are visible when the graph opens.">
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {ALL_NODE_TYPES.map((nt) => (
@@ -289,9 +308,9 @@ export default function Settings() {
         </div>
       </Section>
 
-      <Section title="Data — import, export & share" desc="Everything is local. Move it between machines or publish a public snapshot.">
+      <Section title="Data — import, export & share" desc="Everything is local. Move it between machines, or export the graph as an image.">
         <Row label="Export all data" hint="Full backup (accounts, repos, branches, PRs, commits) as JSON.">
-          <a href="/api/export" download="commit-grapher-export.json" className="btn" style={{ textDecoration: "none", padding: "6px 12px", color: "var(--accent)" }}>⬇ {t("Export JSON")}</a>
+          <button className="btn" onClick={exportAll} style={{ padding: "6px 12px", color: "var(--accent)" }}>⬇ {t("Export JSON")}</button>
         </Row>
         <Row label="Import data" hint="Merge a previously exported JSON backup.">
           <label className="btn" style={{ padding: "6px 12px", color: "var(--accent)", cursor: "pointer" }}>
@@ -305,9 +324,9 @@ export default function Settings() {
               }} />
           </label>
         </Row>
-        <Row label="Share / publish snapshot" hint="Download a public-graph.json of your current network — the format the GitHub Pages hero renders.">
-          <button className="btn btn-accent2" disabled={sharing} onClick={shareSnapshot} style={{ padding: "6px 12px" }}>
-            {sharing ? t("Building…") : `⇧ ${t("Public snapshot")}`}
+        <Row label="Export graph as PNG" hint="Download a PNG image of your current network graph (rendered headlessly with the current filters, layout & theme).">
+          <button className="btn btn-accent2" disabled={rendering} onClick={exportPNG} style={{ padding: "6px 12px" }}>
+            {rendering ? t("Rendering…") : `⬇ ${t("Graph PNG")}`}
           </button>
         </Row>
       </Section>

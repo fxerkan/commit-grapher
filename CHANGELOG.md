@@ -20,6 +20,36 @@ together with the entry added here.
 
 ## [Unreleased]
 
+## [0.2.0] — 2026-08-23
+
+### Added
+
+- **Hover tooltips on graph nodes** — a floating card showing the node's label, type and
+  aggregate stats (commits / branches / PRs for a repo; repos + totals for an account),
+  attached server-side to each node.
+- **Date-range quick presets on the Network Graph** — the `1h/1d/1w/30d/90d/1y/All` presets
+  and date pickers now filter the graph too (repos with commits in-window, in-window counts).
+- **Intro animation** — on first graph load, nodes reveal step by step (repo → branches →
+  PRs → work items), several account subtrees growing in parallel like the landing page.
+  Toggle + duration live in Settings; auto-skips on very large (>4000-node) graphs.
+- **Export graph as PNG** — download a headlessly-rendered image of the current network
+  (same layout, filters and theme as the live view).
+
+### Changed
+
+- **AI-authored commits are now queryable in GraphQL without focusing a repo** — commit
+  nodes are read live from the DB; added an `aiOnly` argument to `nodes`/`count`.
+- **Drill-down zoom** — clicking a repo now zooms in to fill the canvas instead of resetting
+  to fit the whole (tiny) subgraph.
+- **Full Turkish coverage** — the Stats dashboard (KPIs, charts, hints, AI roles, pulse, fun
+  facts) and the GraphQL panel are now fully translated.
+- **Settings nav** — dropped the gear icon so the tab matches the others.
+
+### Fixed
+
+- MultiSelect now shows "no data yet" (instead of "no matches") when a facet has no options
+  at all — e.g. the Library/Framework filter when no repo has topics.
+
 ## [0.1.0] — 2026-08-23
 
 First public version. A local-first app that aggregates your commit history from every
@@ -51,5 +81,6 @@ version-control account you own and turns it into an interactive dashboard — r
 - **Accounts** — add via PAT or GitHub OAuth device flow; rename accounts; JSON export/import.
 - **Theming** — dark/light themes via CSS variables.
 
-[Unreleased]: https://github.com/fxerkan/commit-grapher/compare/v0.1.0...HEAD
+[Unreleased]: https://github.com/fxerkan/commit-grapher/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/fxerkan/commit-grapher/compare/v0.1.0...v0.2.0
 [0.1.0]: https://github.com/fxerkan/commit-grapher/releases/tag/v0.1.0

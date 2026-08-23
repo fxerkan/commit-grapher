@@ -130,7 +130,8 @@ def _pipe(s: str | None) -> list[str]:
 def get_graph(provider: str | None = None, repo_id: int | None = None, authors: str | None = None,
               repo_ids: str | None = None, projects: str | None = None,
               organizations: str | None = None, account_ids: str | None = None,
-              languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None):
+              languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None,
+              start: str | None = None, end: str | None = None):
     author_list = _pipe(authors)
     rid_list = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
     proj_list = _pipe(projects)
@@ -140,7 +141,7 @@ def get_graph(provider: str | None = None, repo_id: int | None = None, authors: 
                        repo_ids=rid_list, projects=proj_list or None,
                        organizations=org_list or None, account_ids=acc_list,
                        languages=_pipe(languages) or None, libraries=_pipe(libraries) or None,
-                       ai_agents=_pipe(ai_agents) or None)
+                       ai_agents=_pipe(ai_agents) or None, start=start or None, end=end or None)
 
 
 class GraphQLIn(BaseModel):

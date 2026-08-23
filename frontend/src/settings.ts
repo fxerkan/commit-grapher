@@ -22,6 +22,8 @@ export interface AppSettings {
   scaling: number;                // ForceAtlas2 scalingRatio (node spread)
   labelDensity: number;          // sigma labelRenderedSizeThreshold (lower = more labels)
   showArrows: boolean;            // default: draw relationship arrows
+  introAnimation: boolean;        // staged node-by-node reveal on first graph load
+  introSeconds: number;           // how long that reveal takes, in seconds
   defaultNodeTypes: NodeType[];   // node types visible by default
   // Default filters (applied when the graph first loads)
   defaultProvider: string;        // "" = all providers
@@ -42,6 +44,8 @@ export const DEFAULTS: AppSettings = {
   scaling: 25,
   labelDensity: 6,
   showArrows: false,
+  introAnimation: true,
+  introSeconds: 6,
   defaultNodeTypes: [...ALL_NODE_TYPES],
   defaultProvider: "",
   defaultHumanAI: "all",
