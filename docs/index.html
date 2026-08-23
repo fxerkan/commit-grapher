@@ -51,10 +51,15 @@
   .chips{display:flex;gap:28px;flex-wrap:wrap}
   .chip .n{font-size:26px;font-weight:800}.chip .l{font-size:13px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
   .hero-graph{position:relative}
-  #graph{width:100%;height:min(70vh,560px);border:1px solid var(--border);border-radius:var(--radius);
+  #graph{position:relative;width:100%;height:min(70vh,560px);border:1px solid var(--border);border-radius:var(--radius);
     background:radial-gradient(120% 120% at 72% 28%, #121a26, #0a0d12);overflow:hidden;
     box-shadow:0 40px 90px -50px #000,0 1px 0 rgba(255,255,255,.04) inset}
-  .hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;color:var(--muted);font-size:12px;pointer-events:none}
+  .hint{position:absolute;bottom:12px;left:0;right:0;text-align:center;color:var(--muted);font-size:12px;pointer-events:none;z-index:4}
+  .g-tip{position:absolute;transform:translate(-50%,-136%);background:var(--panel);border:1px solid var(--border);
+    border-radius:10px;padding:8px 11px;font-size:12px;color:var(--fg);pointer-events:none;opacity:0;
+    transition:opacity .12s;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+    z-index:6;box-shadow:0 12px 30px -12px #000}
+  .g-tip b{display:block;font-size:13px;margin-bottom:1px} .g-tip span{color:var(--muted)}
 
   /* sections */
   section{padding:92px 0}
@@ -271,104 +276,107 @@ cd frontend &amp;&amp; npm run build</code></pre>
     const el = document.getElementById("graph");
     const data = await fetch("public-graph.json").then(r=>r.json());
     document.getElementById("chips").innerHTML =
-      [[data.stats.repos,"public repos"],[data.stats.stars,"stars"],[data.stats.languages,"languages"],[6,"providers"]]
+      [[data.stats.repos,"repos"],[data.stats.stars,"stars"],[data.stats.languages,"languages"],[6,"git hosts"]]
       .map(([n,l])=>`<div class="chip"><div class="n grad">${n}</div><div class="l">${l}</div></div>`).join("");
 
     const Graph = graphology.Graph;
-    const g = new Graph();
-    data.nodes.forEach(n=>g.addNode(n.key,{...n.attributes}));
-    data.edges.forEach(e=>{ if(g.hasNode(e.source)&&g.hasNode(e.target)&&!g.hasEdge(e.source,e.target)) g.addEdgeWithKey(e.key,e.source,e.target,{}); });
-    if(window.graphologyLayoutForceAtlas2) graphologyLayoutForceAtlas2.assign(g,{iterations:250,settings:{gravity:.6,scalingRatio:28}});
-
-    // Remember the settled layout + base size/colour so we can animate around them.
-    const base = {};
-    g.forEachNode((k,a)=>{ base[k]={x:a.x, y:a.y, size:a.size||8, color:a.color}; });
-
+    const FA2 = window.graphologyLayoutForceAtlas2;
+    const g = new Graph();                          // starts EMPTY — we build it live
     const renderer = new Sigma(g, el, {
       labelColor:{color:"#c9d4e0"}, labelFont:"ui-sans-serif, system-ui", labelSize:13, labelWeight:"600",
-      defaultEdgeColor:"#223044", labelRenderedSizeThreshold:6, minCameraRatio:.35, maxCameraRatio:2.4,
+      defaultEdgeColor:"#223044", labelRenderedSizeThreshold:8, minCameraRatio:.3, maxCameraRatio:2.6,
     });
+    const now = () => performance.now();
 
-    // ── Attention animations ─────────────────────────────────────────
-    const HUB = data.nodes.find(n=>n.attributes.nodeType==="account")?.key || data.nodes[0].key;
-    // Reveal order: breadth-first from the hub, so relationships draw outward one by one.
-    const order=[HUB], seen=new Set([HUB]);
-    for(let i=0;i<order.length;i++) g.forEachNeighbor(order[i], nb=>{ if(!seen.has(nb)){ seen.add(nb); order.push(nb);} });
-    g.forEachNode(k=>{ if(!seen.has(k)){ seen.add(k); order.push(k);} });  // any stragglers
+    // ── build plan: nodes sorted by reveal order (account → workspace → repo → lang/PR → next account)
+    const plan = [...data.nodes].sort((a,b)=>a.order-b.order);
+    const attrOf = Object.fromEntries(data.nodes.map(n=>[n.key,n.attributes]));
+    const parentOf = Object.fromEntries(data.nodes.map(n=>[n.key,n.parent]));
+    const meta = {};                                // key -> {born, target}
+    let hovered=null, dragged=null, layoutOn=false;
 
-    const revealed=new Set(), popAt={};
-    let revealing=true, hovered=null, shakeUntil=0, shaking=false;
-    const now=()=>performance.now();
+    const FA2SET = {gravity:1.1, scalingRatio:42, slowDown:8, barnesHutOptimize:true};
+    function jitter(){ return (Math.random()-.5)*8; }
 
-    let idx=0;
-    const revTimer=setInterval(()=>{
-      if(idx>=order.length){ clearInterval(revTimer); revealing=false; return; }
-      const k=order[idx++]; revealed.add(k); popAt[k]=now();
-    }, 70);
-
-    // Ripple = pop wave from the hub outward + a brief shake. Grabs the eye.
-    function ripple(){
-      order.forEach((k,i)=> setTimeout(()=>{ popAt[k]=now(); }, i*30));
-      shakeUntil = now() + 520;
+    function addNode(n){
+      const p = parentOf[n.key];
+      const pa = (p && g.hasNode(p)) ? g.getNodeAttributes(p) : {x:0,y:0};
+      g.addNode(n.key, {...n.attributes, size:0.1, x: pa.x + jitter(), y: pa.y + jitter()});
+      meta[n.key] = {born: now(), target: n.attributes.size};
+      // draw every edge whose endpoints are both present now
+      data.edges.forEach(e=>{ if(!g.hasEdge(e.source,e.target) && g.hasNode(e.source) && g.hasNode(e.target))
+        g.addEdgeWithKey(e.key, e.source, e.target, {}); });
     }
-    setInterval(()=>{ if(!revealing && !document.hidden) ripple(); }, 6500);
-    el.addEventListener("click", ()=>{ if(!revealing) ripple(); });   // click the graph to replay
 
-    // hover highlight
-    renderer.on("enterNode",e=>{hovered=e.node;});
-    renderer.on("leaveNode",()=>{hovered=null;});
+    // reveal one node every ~95ms, with a short kick of layout so the shape keeps reshaping
+    let i=0;
+    layoutOn=true;
+    const timer=setInterval(()=>{
+      if(i>=plan.length){ clearInterval(timer); setTimeout(()=>{ layoutOn=false; }, 2600); return; }
+      addNode(plan[i++]);
+    }, 95);
 
+    // ── hover tooltip
+    const tip = document.createElement("div"); tip.className="g-tip"; el.appendChild(tip);
+    const showTip = (node)=>{ const a=g.getNodeAttributes(node); const v=renderer.graphToViewport(a);
+      tip.innerHTML = `<b>${a.label}</b><span>${a.detail||a.nodeType}</span>`;
+      tip.style.left=v.x+"px"; tip.style.top=v.y+"px"; tip.style.opacity=1; };
+    renderer.on("enterNode", e=>{ hovered=e.node; showTip(e.node); });
+    renderer.on("leaveNode", ()=>{ hovered=null; tip.style.opacity=0; });
+
+    // ── hover highlight + freshly-added pop/glow
     renderer.setSetting("nodeReducer",(node,d)=>{
-      const t=now();
-      if(revealing && !revealed.has(node)) return {...d, hidden:true};
-      let size = base[node].size * (1 + 0.06*Math.sin(t/650 + base[node].x*0.35)); // idle breathing
-      const p = popAt[node];
-      if(p){ const k=Math.max(0, 1-(t-p)/620); size *= 1 + 1.15*k*k; }             // pop-in / ripple
-      let res = {...d, size};
+      let res={...d};
+      const m=meta[node];
+      if(m && now()-m.born < 750){ res.zIndex=2; res.highlighted=true; res.forceLabel=true; }   // highlight new nodes
       if(hovered){
-        if(node===hovered || g.areNeighbors(hovered,node)) res={...res, zIndex:1, forceLabel:true};
-        else res={...res, color:"#33404f66", label:"", zIndex:0};
+        if(node===hovered || g.areNeighbors(hovered,node)){ res.zIndex=3; res.forceLabel=true; res.highlighted=true; }
+        else { res.color="#33404f66"; res.label=""; res.zIndex=0; }
       }
       return res;
     });
     renderer.setSetting("edgeReducer",(edge,d)=>{
-      if(revealing){ const s=g.source(edge), t=g.target(edge); if(!revealed.has(s)||!revealed.has(t)) return {...d, hidden:true}; }
-      const p = popAt[g.source(edge)];
+      const m=meta[g.target(edge)];
       if(hovered && !g.hasExtremity(edge,hovered)) return {...d, hidden:true};
       if(hovered) return {...d, color:"#58a6ff", size:2};
-      if(p && now()-p < 500) return {...d, color:"#58a6ff"};   // light up freshly-drawn relations
+      if(m && now()-m.born < 650) return {...d, color:"#58a6ff", size:1.6};   // light up just-drawn relations
       return d;
     });
 
-    // drag
-    let dragged=null, down=false;
-    renderer.on("downNode",e=>{dragged=e.node;down=true;g.setNodeAttribute(dragged,"highlighted",true);renderer.getCamera().disable();});
-    renderer.getMouseCaptor().on("mousemovebody",e=>{
-      if(!down||!dragged)return;
+    // ── drag & drop
+    let down=false;
+    renderer.on("downNode", e=>{ dragged=e.node; down=true; layoutOn=false;   // freeze layout while dragging
+      g.setNodeAttribute(dragged,"highlighted",true); renderer.getCamera().disable(); });
+    renderer.getMouseCaptor().on("mousemovebody", e=>{
+      if(!down||!dragged) return;
       const p=renderer.viewportToGraph(e);
       g.setNodeAttribute(dragged,"x",p.x); g.setNodeAttribute(dragged,"y",p.y);
-      base[dragged].x=p.x; base[dragged].y=p.y;   // keep base in sync so shake returns here
-      e.preventSigmaDefault();e.original.preventDefault();e.original.stopPropagation();
+      e.preventSigmaDefault(); e.original.preventDefault(); e.original.stopPropagation();
     });
-    const up=()=>{if(dragged)g.removeNodeAttribute(dragged,"highlighted");dragged=null;down=false;renderer.getCamera().enable();};
-    renderer.getMouseCaptor().on("mouseup",up);
+    const up=()=>{ if(dragged) g.removeNodeAttribute(dragged,"highlighted"); dragged=null; down=false; renderer.getCamera().enable(); };
+    renderer.getMouseCaptor().on("mouseup", up);
+    renderer.getMouseCaptor().on("mouseupbody", up);
 
-    // Animation driver: shake position jitter + continuous refresh for breathing/pops.
+    // ── driver: live layout (shape morphs) + size pop-in tween, every frame
     function frame(){
       const t=now();
-      if(t < shakeUntil){
-        shaking=true;
-        g.forEachNode(k=>{ if(k===dragged) return; const b=base[k];
-          g.setNodeAttribute(k,"x", b.x + Math.sin(t/38 + b.y)*0.9);
-          g.setNodeAttribute(k,"y", b.y + Math.cos(t/34 + b.x)*0.9); });
-      } else if(shaking){
-        shaking=false;
-        g.forEachNode(k=>{ if(k===dragged) return; g.setNodeAttribute(k,"x",base[k].x); g.setNodeAttribute(k,"y",base[k].y); });
-      }
+      if(layoutOn && g.order>2 && FA2) FA2.assign(g,{iterations:1, settings:FA2SET});   // keeps reshaping
+      g.forEachNode((k,a)=>{
+        const m=meta[k]; if(!m) return;
+        const p=Math.min(1,(t-m.born)/430);
+        const ease=1-Math.pow(1-p,3);                        // easeOutCubic
+        const overshoot = p<1 ? Math.sin(p*Math.PI)*0.35 : 0; // little pop past target
+        const target=m.target*(ease+overshoot);
+        if(Math.abs(a.size-target)>0.05) g.setNodeAttribute(k,"size", target);
+      });
+      if(hovered && g.hasNode(hovered)){ const v=renderer.graphToViewport(g.getNodeAttributes(hovered)); tip.style.left=v.x+"px"; tip.style.top=v.y+"px"; }
       renderer.refresh();
       requestAnimationFrame(frame);
     }
     requestAnimationFrame(frame);
+
+    // click empty space → gentle re-shuffle (re-run layout briefly) for extra life
+    el.addEventListener("click", e=>{ if(e.target.tagName==="CANVAS" && !dragged){ layoutOn=true; setTimeout(()=>{layoutOn=false;},1800);} });
   }catch(err){ document.getElementById("graph").style.display="none"; console.error(err); }
 })();
 </script>
