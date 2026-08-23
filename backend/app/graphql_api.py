@@ -91,8 +91,9 @@ def _root(provider: str | None, focus_repo: int | None) -> dict:
     return {"nodes": nodes, "edges": edges, "count": count}
 
 
-def execute(query: str, variables: dict | None = None, provider: str | None = None) -> dict:
-    result = graphql_sync(schema, query, root_value=_root(provider), variable_values=variables)
+def execute(query: str, variables: dict | None = None, provider: str | None = None,
+            focus_repo: int | None = None) -> dict:
+    result = graphql_sync(schema, query, root_value=_root(provider, focus_repo), variable_values=variables)
     out: dict = {"data": result.data}
     if result.errors:
         out["errors"] = [{"message": e.message} for e in result.errors]

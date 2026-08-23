@@ -52,10 +52,10 @@ export const api = {
     const qs = p.toString();
     return fetch("/api/graph" + (qs ? `?${qs}` : "")).then(j);
   },
-  graphql: (query: string, provider?: string): Promise<{ data: any; errors?: { message: string }[] }> =>
+  graphql: (query: string, provider?: string, repo_id?: number): Promise<{ data: any; errors?: { message: string }[] }> =>
     fetch("/api/graphql", {
       method: "POST", headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ query, provider }),
+      body: JSON.stringify({ query, provider, repo_id }),
     }).then(j),
   renameAccount: (id: number, display_name: string) =>
     fetch(`/api/accounts/${id}`, { method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ display_name }) }).then(j),

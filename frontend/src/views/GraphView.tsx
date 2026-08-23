@@ -269,6 +269,7 @@ export default function GraphView() {
     setQueryKeys(null);
   };
   const applyQuery = (keys: string[] | null) => setQueryKeys(keys && keys.length ? new Set(keys) : null);
+  const canvasKeys = useMemo(() => new Set((data?.nodes || []).map((n) => n.key)), [data]);
 
   const providerOpts = (facets?.providers || []).map((p) => ({ key: p, label: p }));
   const orgOpts = (facets?.organizations || []).filter((o) => !providerStr || o.provider === providerStr).map((o) => ({ key: o.name, label: o.name }));
@@ -358,7 +359,8 @@ export default function GraphView() {
 
   return (
     <div style={{ display: "flex", flexDirection: "column", height: "100%", overflow: "hidden" }}>
-      <GraphQLPane provider={providerStr} onApply={applyQuery} applied={queryKeys != null} />
+      <GraphQLPane provider={providerStr} repoId={focus ?? undefined} nodeKeys={canvasKeys}
+        onApply={applyQuery} applied={queryKeys != null} />
       <div style={{ display: "flex", flex: 1, minHeight: 0, overflow: "hidden", gap: 12, padding: 12 }}>
         <FilterPanel dims={dims} open={open} onOpenChange={setOpen} activeCount={activeCount}
           extra={extra} footer={footer} width={width} onWidthChange={setWidth} />

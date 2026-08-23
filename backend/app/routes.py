@@ -147,12 +147,13 @@ class GraphQLIn(BaseModel):
     query: str
     variables: dict | None = None
     provider: str | None = None
+    repo_id: int | None = None  # focused repo → its commits become queryable nodes
 
 
 @router.post("/graphql")
 def run_graphql(body: GraphQLIn):
     """Execute a GraphQL query over the network graph (nodes/edges). See graphql_api.SDL."""
-    return graphql_api.execute(body.query, body.variables, body.provider)
+    return graphql_api.execute(body.query, body.variables, body.provider, body.repo_id)
 
 
 @router.get("/heatmap")

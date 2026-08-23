@@ -20,7 +20,7 @@ const PRESETS: { name: string; query: string }[] = [
   { name: "Pull requests", query: `{
   nodes(type: "pr") { key label repoId project }
 }` },
-  { name: "AI-authored commits", query: `# focus a repo on the canvas first to expand its commits
+  { name: "AI-authored commits", query: `# commits are queryable only for the FOCUSED repo — click a repo on the canvas first
 {
   nodes(type: "commit") { key label author aiAgent }
 }` },
@@ -59,8 +59,9 @@ function keysFromResult(data: any): string[] {
 
 const mono = "ui-monospace, SFMono-Regular, Menlo, monospace";
 
-export default function GraphQLPane({ provider, onApply, applied }: {
-  provider?: string; onApply: (keys: string[] | null) => void; applied: boolean;
+export default function GraphQLPane({ provider, repoId, nodeKeys, onApply, applied }: {
+  provider?: string; repoId?: number; nodeKeys: Set<string>;
+  onApply: (keys: string[] | null) => void; applied: boolean;
 }) {
   const [open, setOpen] = useState(false);
   const [query, setQuery] = useState(DEFAULT);
@@ -70,10 +71,13 @@ export default function GraphQLPane({ provider, onApply, applied }: {
   const [lastKeys, setLastKeys] = useState<string[]>([]);
   const [showFields, setShowFields] = useState(false);
 
+  // Only keys of nodes actually drawn on the canvas can be reflected there.
+  const onCanvas = lastKeys.filter((k) => nodeKeys.has(k));
+
   const run = async () => {
     setRunning(true); setError(""); setResult("");
     try {
-      const r = await api.graphql(query, provider);
+      const r = await api.graphql(query, provider, repoId);
       if (r.errors?.length) setError(r.errors.map((e) => e.message).join("\n"));
       setResult(JSON.stringify(r.data, null, 2));
       setLastKeys(keysFromResult(r.data));
@@ -119,14 +123,20 @@ export default function GraphQLPane({ provider, onApply, applied }: {
               <button onClick={run} disabled={running} style={{ ...btn, background: "var(--accent)", color: "#fff", borderColor: "var(--accent)", fontWeight: 600 }}>
                 {running ? "Running…" : "Run ▶"}
               </button>
-              <button style={btn} disabled={!lastKeys.length} onClick={() => onApply(lastKeys)}>
-                Apply to graph {lastKeys.length ? `(${lastKeys.length})` : ""}
+              <button style={btn} disabled={!onCanvas.length} onClick={() => onApply(onCanvas)}
+                title={lastKeys.length && !onCanvas.length ? "none of these results are drawn on the canvas" : ""}>
+                Apply to graph {onCanvas.length ? `(${onCanvas.length})` : ""}
               </button>
               <span style={{ color: "var(--muted)", fontSize: 11 }}>⌘/Ctrl+Enter to run</span>
               <button style={{ ...btn, marginLeft: "auto" }} onClick={() => setShowFields((s) => !s)}>
                 {showFields ? "Hide fields" : "Available fields"}
               </button>
             </div>
+            {lastKeys.length > 0 && onCanvas.length === 0 && (
+              <div style={{ color: "#d29922", fontSize: 11 }}>
+                {lastKeys.length} result node{lastKeys.length > 1 ? "s" : ""}, none on the canvas — commit nodes appear only when you focus their repo (click it). Counts &amp; off-canvas results still show in the panel →
+              </div>
+            )}
             {showFields && (
               <div style={{ fontFamily: mono, fontSize: 11, color: "var(--muted)", lineHeight: 1.7 }}>
                 {FIELDS.map((f) => (
