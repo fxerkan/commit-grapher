@@ -4,6 +4,7 @@ import "echarts-wordcloud";
 import { api, ChartStats, Facets, AchievementRow } from "../api";
 import { Opt } from "../components/MultiSelect";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
+import { useSettings } from "../settings";
 import LanguagesBar from "../components/LanguagesBar";
 
 // One reusable ECharts canvas. `onClick` wires cross-filter / drill-down.
@@ -120,6 +121,7 @@ export default function StatsView() {
   const [err, setErr] = useState<string | null>(null);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [sec, setSec] = useState<Record<string, boolean>>({ kpi: true, insights: true, facts: true, repo: true, charts: true });
+  const { showFacts } = useSettings();  // Settings → Fun facts toggle
   const toggle = (k: string) => setSec((v) => ({ ...v, [k]: !v[k] }));
   const [achv, setAchv] = useState<AchievementRow[]>([]);
   useEffect(() => { api.achievements().then(setAchv).catch(() => {}); }, []);
@@ -378,6 +380,7 @@ export default function StatsView() {
                 </div>
                 </Section>
 
+                {showFacts && (
                 <Section title="Fun Facts" open={sec.facts} onToggle={() => toggle("facts")}>
                 <div className="facts-grid">
                   <Fact emoji="📜" title="The Essay — longest commit message">
@@ -429,6 +432,7 @@ export default function StatsView() {
                   </Fact>
                 </div>
                 </Section>
+                )}
 
                 <Section title="Repository Stats" open={sec.repo} onToggle={() => toggle("repo")}
                   right={!hasRepoStats ? <span style={{ fontSize: 12, color: "var(--muted)" }}>— re-sync accounts to populate stars, forks, releases, tags…</span> : undefined}>

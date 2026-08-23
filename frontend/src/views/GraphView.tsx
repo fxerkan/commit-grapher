@@ -9,6 +9,7 @@ import { EdgeArrowProgram, EdgeRectangleProgram } from "sigma/rendering";
 import { api, Facets, GraphData } from "../api";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
 import GraphQLPane from "../components/GraphQLPane";
+import { getSettings, physicsIterations, setSettings } from "../settings";
 
 const TYPES = ["account", "repo", "branch", "pr", "commit", "workitem"] as const;
 type NodeType = (typeof TYPES)[number];
@@ -58,9 +59,12 @@ function LoadGraph({ data }: { data: GraphData }) {
       if (g.hasNode(e.source) && g.hasNode(e.target) && !g.hasEdge(e.source, e.target))
         g.addEdgeWithKey(e.key, e.source, e.target, {});
     });
-    // Scale layout cost with graph size so huge graphs (hundreds of repos) stay responsive.
-    const iterations = g.order > 4000 ? 40 : g.order > 1500 ? 90 : 200;
-    if (g.order > 1) forceAtlas2.assign(g, { iterations, settings: { gravity: 1, scalingRatio: 25 } });
+    // Layout effort + spread come from Settings (auto-scaled down for huge graphs). Off = keep
+    // the deterministic scatter positions (fast, no physics pass).
+    const st = getSettings();
+    const iterations = physicsIterations(st.physics, g.order);
+    if (iterations > 0 && g.order > 1)
+      forceAtlas2.assign(g, { iterations, settings: { gravity: st.gravity, scalingRatio: st.scaling } });
     loadGraph(g);
     setTimeout(() => sigma.getCamera().animatedReset({ duration: 400 }), 60);  // fit to the loaded set
   }, [data, loadGraph, sigma]);
@@ -176,12 +180,13 @@ export default function GraphView() {
   const [focus, setFocus] = useState<number | null>(null);
   const [open, setOpen] = useState(true);
   const [width, setWidth] = useState(280);
-  const [onlyMine, setOnlyMine] = useState(false);
-  const [showArrows, setShowArrows] = useState(false);
-  const [myNamesStr, setMyNamesStr] = useState(localStorage.getItem("myNames") || "");
+  const [onlyMine, setOnlyMine] = useState(() => getSettings().defaultOnlyMine);
+  const [showArrows, setShowArrows] = useState(() => getSettings().showArrows);
+  const [myNamesStr, setMyNamesStr] = useState(() => getSettings().myNames);
 
   // server-side filters
-  const [provider, setProvider] = useState<Set<string | number>>(new Set());
+  const [provider, setProvider] = useState<Set<string | number>>(
+    () => { const p = getSettings().defaultProvider; return new Set(p ? [p] : []); });
   const [organizations, setOrganizations] = useState<Set<string | number>>(new Set());
   const [accountIds, setAccountIds] = useState<Set<string | number>>(new Set());
   const [projects, setProjects] = useState<Set<string | number>>(new Set());
@@ -193,7 +198,8 @@ export default function GraphView() {
   // client-side filters (branch/PR selections + node types/search/human-AI)
   const [branchSel, setBranchSel] = useState<Set<string | number>>(new Set());
   const [prSel, setPrSel] = useState<Set<string | number>>(new Set());
-  const [filters, setFilters] = useState<Filters>({ types: new Set(TYPES), search: "", branch: "", humanAI: "all" });
+  const [filters, setFilters] = useState<Filters>(
+    () => { const st = getSettings(); return { types: new Set(st.defaultNodeTypes as NodeType[]), search: "", branch: "", humanAI: st.defaultHumanAI }; });
   const [queryKeys, setQueryKeys] = useState<Set<string> | null>(null);  // node keys from a GraphQL query, applied to the canvas
 
   // Cascading facets: org → workspace → repo → branch/PR/author all narrow to the selection.
@@ -251,6 +257,7 @@ export default function GraphView() {
     labelColor: { color: textColor }, defaultEdgeColor: edgeColor, renderEdgeLabels: false,
     defaultDrawNodeLabel: mkDrawLabel(textColor, halo), defaultDrawNodeHover: mkDrawLabel(textColor, halo),
     labelWeight: "600", zIndex: true,
+    labelRenderedSizeThreshold: getSettings().labelDensity,  // Settings: lower = more labels (picked up on remount)
     edgeProgramClasses: { line: EdgeRectangleProgram, arrow: EdgeArrowProgram },
   }), [textColor, halo, edgeColor]);
 
@@ -261,11 +268,12 @@ export default function GraphView() {
     + (queryKeys ? 1 : 0);
 
   const resetAll = () => {
-    setProvider(new Set()); setOrganizations(new Set()); setAccountIds(new Set());
+    const st = getSettings();
+    setProvider(new Set(st.defaultProvider ? [st.defaultProvider] : [])); setOrganizations(new Set()); setAccountIds(new Set());
     setProjects(new Set()); setRepos(new Set()); setAuthors(new Set());
     setLanguages(new Set()); setLibraries(new Set()); setAiAgents(new Set());
-    setBranchSel(new Set()); setPrSel(new Set()); setFocus(null); setOnlyMine(false);
-    setFilters({ types: new Set(TYPES), search: "", branch: "", humanAI: "all" });
+    setBranchSel(new Set()); setPrSel(new Set()); setFocus(null); setOnlyMine(st.defaultOnlyMine);
+    setFilters({ types: new Set(st.defaultNodeTypes as NodeType[]), search: "", branch: "", humanAI: st.defaultHumanAI });
     setQueryKeys(null);
   };
   const applyQuery = (keys: string[] | null) => setQueryKeys(keys && keys.length ? new Set(keys) : null);
@@ -313,7 +321,7 @@ export default function GraphView() {
       </label>
       {onlyMine && (
         <input style={box} placeholder="my names, comma-separated" value={myNamesStr}
-          onChange={(e) => { setMyNamesStr(e.target.value); localStorage.setItem("myNames", e.target.value); }} />
+          onChange={(e) => { setMyNamesStr(e.target.value); setSettings({ myNames: e.target.value }); }} />
       )}
       <div>
         <div className="field-label">Contributors</div>

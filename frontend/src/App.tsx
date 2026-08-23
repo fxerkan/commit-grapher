@@ -1,32 +1,34 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
+import { useSettings, setSettings } from "./settings";
 
 const GraphView = lazy(() => import("./views/GraphView"));
 const HeatmapView = lazy(() => import("./views/HeatmapView"));
 const StatsView = lazy(() => import("./views/StatsView"));
 const ContributorsView = lazy(() => import("./views/ContributorsView"));
-const Accounts = lazy(() => import("./views/Accounts"));
+const Settings = lazy(() => import("./views/Settings"));
 const Onboarding = lazy(() => import("./views/Onboarding"));
 
-type Tab = "graph" | "heatmap" | "stats" | "contributors" | "accounts";
+type Tab = "graph" | "heatmap" | "stats" | "contributors" | "settings";
 const TABS: [Tab, string][] = [
   ["graph", "Network Graph"],
   ["heatmap", "Contribution Heatmap"],
   ["stats", "Stats"],
   ["contributors", "Contributors"],
-  ["accounts", "Accounts"],
+  ["settings", "⚙ Settings"],
 ];
 
 export default function App() {
-  const [tab, setTab] = useState<Tab>("graph");
-  const [theme, setTheme] = useState<"dark" | "light">(
-    (localStorage.getItem("theme") as "dark" | "light") || "dark"
-  );
+  const s = useSettings();
+  const [tab, setTab] = useState<Tab>(s.landingTab);
   const [onboard, setOnboard] = useState(false);
+
+  // Theme + accent are driven by the settings store (the Settings page is the source of truth).
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
-    localStorage.setItem("theme", theme);
-  }, [theme]);
+    document.documentElement.dataset.theme = s.theme;
+    document.documentElement.style.setProperty("--accent", s.accent);
+  }, [s.theme, s.accent]);
+
   // First run: no accounts yet → show the welcome wizard.
   useEffect(() => {
     api.accounts().then((a) => { if (a.length === 0) setOnboard(true); }).catch(() => {});
@@ -58,9 +60,9 @@ export default function App() {
         <button onClick={() => setOnboard(true)} className="btn" style={{ marginLeft: "auto", color: "var(--muted)", padding: "6px 12px" }}>
           ＋ Add account
         </button>
-        <button onClick={() => setTheme((t) => (t === "dark" ? "light" : "dark"))} title="Toggle theme"
+        <button onClick={() => setSettings({ theme: s.theme === "dark" ? "light" : "dark" })} title="Toggle theme"
           className="btn" style={{ color: "var(--muted)", padding: "6px 12px" }}>
-          {theme === "dark" ? "🌙 Dark" : "☀️ Light"}
+          {s.theme === "dark" ? "🌙 Dark" : "☀️ Light"}
         </button>
       </header>
       <main style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
@@ -69,7 +71,7 @@ export default function App() {
           {tab === "heatmap" && <HeatmapView />}
           {tab === "stats" && <StatsView />}
           {tab === "contributors" && <ContributorsView />}
-          {tab === "accounts" && <Accounts />}
+          {tab === "settings" && <Settings />}
         </Suspense>
       </main>
     </div>
