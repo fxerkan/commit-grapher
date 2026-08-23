@@ -1,6 +1,7 @@
 import { ReactNode, useState } from "react";
 import MultiSelect, { Opt } from "./MultiSelect";
 import { APP_NAME, APP_VERSION, REPO_URL, AUTHOR_URL } from "../version";
+import { useT } from "../i18n";
 
 // GitHub mark (inline so there's no icon dependency).
 const GitHubMark = () => (
@@ -47,6 +48,7 @@ export default function FilterPanel({
   onWidthChange?: (w: number) => void;
 }) {
   const [openKey, setOpenKey] = useState<string | null>(null);
+  const t = useT();
 
   // Date-range quick presets. Filtering is day-granular, so 1h/1d both resolve to "today".
   const PRESETS: [string, number | null][] = [
@@ -63,7 +65,7 @@ export default function FilterPanel({
   if (!open) {
     return (
       <button className="btn" style={{ alignSelf: "flex-start", margin: 8 }} onClick={() => onOpenChange(true)}>
-        ▶ {title}{activeCount > 0 ? ` (${activeCount})` : ""}
+        ▶ {t(title)}{activeCount > 0 ? ` (${activeCount})` : ""}
       </button>
     );
   }
@@ -72,23 +74,23 @@ export default function FilterPanel({
     <aside className="filter-panel"
       style={onWidthChange ? { width, flex: `0 0 ${width}px`, position: "relative", maxHeight: "100%", overflowY: "auto" } : undefined}>
       <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 12 }}>
-        <b>{title} {activeCount > 0 && <span className="pill">{activeCount}</span>}</b>
-        <button className="btn" style={{ padding: "2px 8px" }} title="collapse" onClick={() => onOpenChange(false)}>◀</button>
+        <b>{t(title)} {activeCount > 0 && <span className="pill">{activeCount}</span>}</b>
+        <button className="btn" style={{ padding: "2px 8px" }} title={t("collapse")} onClick={() => onOpenChange(false)}>◀</button>
       </div>
 
       <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {dims.map((d) => (
           <div key={d.key}>
-            <div className="field-label">{d.label}</div>
+            <div className="field-label">{t(d.label)}</div>
             <MultiSelect options={d.options} selected={d.selected} onChange={d.onChange}
-              placeholder={d.placeholder} single={d.single}
+              placeholder={d.placeholder ? t(d.placeholder) : undefined} single={d.single}
               open={openKey === d.key} onOpenChange={(o) => setOpenKey(o ? d.key : null)} />
           </div>
         ))}
 
         {dateRange && (
           <div>
-            <div className="field-label">Date range</div>
+            <div className="field-label">{t("Date range")}</div>
             <div style={{ display: "flex", flexDirection: "column", gap: 6 }}>
               <input type="date" className="cg-input" value={dateRange.start} max={dateRange.end || undefined} onChange={(e) => dateRange.setStart(e.target.value)} />
               <input type="date" className="cg-input" value={dateRange.end} min={dateRange.start || undefined} onChange={(e) => dateRange.setEnd(e.target.value)} />
@@ -106,12 +108,12 @@ export default function FilterPanel({
         {chips && chips.length > 0 && (
           <div style={{ borderTop: "1px solid var(--border)", paddingTop: 10 }}>
             <div style={{ display: "flex", justifyContent: "space-between", marginBottom: 6 }}>
-              <span style={{ fontSize: 11, color: "var(--muted)" }}>ACTIVE</span>
-              {onClear && <a onClick={onClear} style={{ color: "var(--muted)", cursor: "pointer", fontSize: 12 }}>clear all</a>}
+              <span style={{ fontSize: 11, color: "var(--muted)" }}>{t("ACTIVE")}</span>
+              {onClear && <a onClick={onClear} style={{ color: "var(--muted)", cursor: "pointer", fontSize: 12 }}>{t("clear all")}</a>}
             </div>
             <div style={{ display: "flex", gap: 6, flexWrap: "wrap" }}>
               {chips.map((c, i) => (
-                <span key={i} className="chip" onClick={c.rm} title="remove filter">{c.label} <span className="x">✕</span></span>
+                <span key={i} className="chip" onClick={c.rm} title={t("remove filter")}>{c.label} <span className="x">✕</span></span>
               ))}
             </div>
           </div>

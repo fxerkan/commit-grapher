@@ -5,6 +5,7 @@ import { api, ChartStats, Facets, AchievementRow } from "../api";
 import { Opt } from "../components/MultiSelect";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
 import { useSettings } from "../settings";
+import { t } from "../i18n";
 import LanguagesBar from "../components/LanguagesBar";
 
 // One reusable ECharts canvas. `onClick` wires cross-filter / drill-down.
@@ -84,7 +85,7 @@ function Kpi({ num, label, icon }: { num: React.ReactNode; label: string; icon: 
 function Fact({ emoji, title, children }: { emoji: string; title: string; children: React.ReactNode }) {
   return (
     <div className="card fact">
-      <div className="fact-head"><span className="fact-emoji">{emoji}</span>{title}</div>
+      <div className="fact-head"><span className="fact-emoji">{emoji}</span>{t(title)}</div>
       <div style={{ fontSize: 13, color: "var(--fg)", lineHeight: 1.5 }}>{children}</div>
     </div>
   );
@@ -106,7 +107,7 @@ function Section({ title, open, onToggle, right, children }: { title: string; op
     <div>
       <div onClick={onToggle} style={{ cursor: "pointer", userSelect: "none", display: "flex", alignItems: "center", gap: 8, marginBottom: open ? 12 : 0 }}>
         <span style={{ color: "var(--muted)", fontSize: 12, width: 12, display: "inline-block" }}>{open ? "▼" : "▶"}</span>
-        <b style={{ fontSize: 16 }}>{title}</b>
+        <b style={{ fontSize: 16 }}>{t(title)}</b>
         {right}
       </div>
       {open && children}

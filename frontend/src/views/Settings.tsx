@@ -3,6 +3,7 @@ import { Account, api } from "../api";
 import {
   ALL_NODE_TYPES, AppSettings, NodeType, Physics, useSettings, setSettings, resetSettings, DEFAULTS,
 } from "../settings";
+import { t, LANGS } from "../i18n";
 
 const PROVIDERS = ["github", "azure", "gitlab", "bitbucket", "gitea", "codeberg", "jira"];
 const NODE_LABEL: Record<NodeType, string> = {
@@ -17,8 +18,8 @@ const input: React.CSSProperties = {
 function Section({ title, desc, children }: { title: string; desc?: string; children: React.ReactNode }) {
   return (
     <section className="panel" style={{ padding: 20, marginBottom: 16 }}>
-      <h3 style={{ margin: "0 0 2px" }}>{title}</h3>
-      {desc && <p style={{ color: "var(--muted)", margin: "0 0 14px", fontSize: 13 }}>{desc}</p>}
+      <h3 style={{ margin: "0 0 2px" }}>{t(title)}</h3>
+      {desc && <p style={{ color: "var(--muted)", margin: "0 0 14px", fontSize: 13 }}>{t(desc)}</p>}
       {children}
     </section>
   );
@@ -27,8 +28,8 @@ function Row({ label, hint, children }: { label: string; hint?: string; children
   return (
     <div style={{ display: "flex", alignItems: "center", gap: 16, padding: "10px 0", borderTop: "1px solid var(--border)" }}>
       <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontWeight: 600, fontSize: 14 }}>{label}</div>
-        {hint && <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 2 }}>{hint}</div>}
+        <div style={{ fontWeight: 600, fontSize: 14 }}>{t(label)}</div>
+        {hint && <div style={{ color: "var(--muted)", fontSize: 12, marginTop: 2 }}>{t(hint)}</div>}
       </div>
       <div style={{ flex: "0 0 auto", display: "flex", alignItems: "center", gap: 8 }}>{children}</div>
     </div>
@@ -97,7 +98,7 @@ export default function Settings() {
       await load();
     } catch (e: any) { setMsg(e.message); } finally { setBusy(null); }
   };
-  const del = async (id: number) => { if (confirm("Remove this account and its cached data?")) { await api.deleteAccount(id); await load(); } };
+  const del = async (id: number) => { if (confirm(t("Remove this account and its cached data?"))) { await api.deleteAccount(id); await load(); } };
   const [editId, setEditId] = useState<number | null>(null);
   const [editVal, setEditVal] = useState("");
   const saveName = async (id: number) => { await api.renameAccount(id, editVal.trim()); setEditId(null); await load(); };
@@ -145,28 +146,33 @@ export default function Settings() {
   return (
     <div style={{ padding: 24, maxWidth: 880, margin: "0 auto" }}>
       <div style={{ display: "flex", alignItems: "baseline", gap: 12, marginBottom: 16 }}>
-        <h2 style={{ margin: 0 }}>Settings</h2>
-        <button className="btn" onClick={() => { if (confirm("Reset all preferences to defaults? (accounts are kept)")) resetSettings(); }}
-          style={{ marginLeft: "auto", padding: "6px 12px", color: "var(--muted)" }}>Reset to defaults</button>
+        <h2 style={{ margin: 0 }}>{t("Settings")}</h2>
+        <button className="btn" onClick={() => { if (confirm(t("Reset all preferences to defaults? (accounts are kept)"))) resetSettings(); }}
+          style={{ marginLeft: "auto", padding: "6px 12px", color: "var(--muted)" }}>{t("Reset to defaults")}</button>
       </div>
 
       {msg && <div className="panel" style={{ padding: "10px 14px", marginBottom: 16, color: "var(--accent)" }}>{msg}</div>}
 
       <Section title="General" desc="Appearance and what you see first.">
+        <Row label="Interface language">
+          <select style={input} value={s.language} onChange={(e) => set("language", e.target.value as any)}>
+            {LANGS.map(([v, label]) => <option key={v} value={v}>{label}</option>)}
+          </select>
+        </Row>
         <Row label="Theme">
-          <Seg value={s.theme} onChange={(v) => set("theme", v)} options={[["dark", "🌙 Dark"], ["light", "☀️ Light"]]} />
+          <Seg value={s.theme} onChange={(v) => set("theme", v)} options={[["dark", `🌙 ${t("Dark")}`], ["light", `☀️ ${t("Light")}`]]} />
         </Row>
         <Row label="Accent color" hint="Used across buttons, links and highlights.">
           <input type="color" value={s.accent} onChange={(e) => set("accent", e.target.value)}
             style={{ width: 40, height: 28, background: "none", border: "1px solid var(--border)", borderRadius: 6, cursor: "pointer" }} />
-          <button className="btn" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => set("accent", DEFAULTS.accent)}>reset</button>
+          <button className="btn" style={{ padding: "4px 8px", fontSize: 12 }} onClick={() => set("accent", DEFAULTS.accent)}>{t("reset")}</button>
         </Row>
         <Row label="Open on launch" hint="Which view loads when you start the app.">
           <select style={input} value={s.landingTab} onChange={(e) => set("landingTab", e.target.value as any)}>
-            <option value="graph">Network Graph</option>
-            <option value="heatmap">Contribution Heatmap</option>
-            <option value="stats">Stats</option>
-            <option value="contributors">Contributors</option>
+            <option value="graph">{t("Network Graph")}</option>
+            <option value="heatmap">{t("Contribution Heatmap")}</option>
+            <option value="stats">{t("Stats")}</option>
+            <option value="contributors">{t("Contributors")}</option>
           </select>
         </Row>
       </Section>
@@ -174,7 +180,7 @@ export default function Settings() {
       <Section title="Network graph — layout & animation" desc="Physics of the force-directed layout. Changes apply on the next graph load or filter change.">
         <Row label="Animation level" hint="How hard ForceAtlas2 works. Off keeps a fast static spread; High is prettiest but heavier.">
           <Seg<Physics> value={s.physics} onChange={(v) => set("physics", v)}
-            options={[["off", "Off"], ["low", "Low"], ["balanced", "Balanced"], ["high", "High"]]} />
+            options={[["off", t("Off")], ["low", t("Low")], ["balanced", t("Balanced")], ["high", t("High")]]} />
         </Row>
         <Row label="Gravity" hint="Higher pulls nodes toward the center (tighter clusters).">
           <Slider value={s.gravity} min={0} max={5} step={0.5} onChange={(v) => set("gravity", v)} />
@@ -190,9 +196,9 @@ export default function Settings() {
         </Row>
         <Row label="Node types shown by default" hint="Which node kinds are visible when the graph opens.">
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
-            {ALL_NODE_TYPES.map((t) => (
-              <label key={t} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--fg)" }}>
-                <input type="checkbox" checked={s.defaultNodeTypes.includes(t)} onChange={() => toggleNodeType(t)} />{NODE_LABEL[t]}
+            {ALL_NODE_TYPES.map((nt) => (
+              <label key={nt} style={{ display: "inline-flex", alignItems: "center", gap: 5, fontSize: 13, color: "var(--fg)" }}>
+                <input type="checkbox" checked={s.defaultNodeTypes.includes(nt)} onChange={() => toggleNodeType(nt)} />{t(NODE_LABEL[nt])}
               </label>
             ))}
           </div>
@@ -202,13 +208,13 @@ export default function Settings() {
       <Section title="Default filters" desc="How the network graph is pre-filtered each time it opens.">
         <Row label="Default provider">
           <select style={input} value={s.defaultProvider} onChange={(e) => set("defaultProvider", e.target.value)}>
-            <option value="">All providers</option>
+            <option value="">{t("All providers")}</option>
             {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
         </Row>
         <Row label="Authorship" hint="Show everyone, only humans, or only AI-agent commits.">
           <Seg value={s.defaultHumanAI} onChange={(v) => set("defaultHumanAI", v)}
-            options={[["all", "All"], ["human", "Humans"], ["ai", "AI"]]} />
+            options={[["all", t("All")], ["human", t("Humans")], ["ai", t("AI")]]} />
         </Row>
         <Row label="Only my activity" hint="Highlight only commits by your names below.">
           <Switch on={s.defaultOnlyMine} onChange={(v) => set("defaultOnlyMine", v)} />
@@ -230,19 +236,19 @@ export default function Settings() {
           <select style={input} value={form.provider} onChange={(e) => setForm({ ...form, provider: e.target.value })}>
             {PROVIDERS.map((p) => <option key={p} value={p}>{p}</option>)}
           </select>
-          <input style={input} placeholder="username / org / email" value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
-          <input style={{ ...input, width: 220 }} type="password" placeholder="access token" value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} />
-          <input style={{ ...input, width: 240 }} placeholder="owner_url (Azure/Jira/Bitbucket/self-hosted)" value={form.owner_url} onChange={(e) => setForm({ ...form, owner_url: e.target.value })} />
+          <input style={input} placeholder={t("username / org / email")} value={form.username} onChange={(e) => setForm({ ...form, username: e.target.value })} />
+          <input style={{ ...input, width: 220 }} type="password" placeholder={t("access token")} value={form.token} onChange={(e) => setForm({ ...form, token: e.target.value })} />
+          <input style={{ ...input, width: 240 }} placeholder={t("owner_url (Azure/Jira/Bitbucket/self-hosted)")} value={form.owner_url} onChange={(e) => setForm({ ...form, owner_url: e.target.value })} />
           <button className="btn btn-primary" disabled={busy === "add" || !form.username || !form.token} onClick={add} style={{ padding: "8px 16px" }}>
-            {busy === "add" ? "Adding…" : "Add"}
+            {busy === "add" ? t("Adding…") : t("Add")}
           </button>
         </div>
 
         <details style={{ marginTop: 12 }}>
-          <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 13 }}>…or log in with GitHub (OAuth device flow, no PAT)</summary>
+          <summary style={{ cursor: "pointer", color: "var(--muted)", fontSize: 13 }}>{t("…or log in with GitHub (OAuth device flow, no PAT)")}</summary>
           <div style={{ display: "flex", gap: 8, alignItems: "center", flexWrap: "wrap", marginTop: 10 }}>
             <input style={{ ...input, width: 300 }} placeholder="GitHub OAuth App Client ID (Iv1.… / Ov23…)" value={clientId} onChange={(e) => setClientId(e.target.value)} />
-            <button className="btn btn-accent2" disabled={!clientId.trim() || !!device} onClick={oauthLogin} style={{ padding: "8px 16px" }}>Login with GitHub</button>
+            <button className="btn btn-accent2" disabled={!clientId.trim() || !!device} onClick={oauthLogin} style={{ padding: "8px 16px" }}>{t("Login with GitHub")}</button>
           </div>
           {device && (
             <div className="panel" style={{ marginTop: 12 }}>
@@ -254,7 +260,7 @@ export default function Settings() {
         </details>
 
         <div style={{ marginTop: 16 }}>
-          {accounts.length === 0 && <div style={{ color: "var(--muted)" }}>No accounts yet.</div>}
+          {accounts.length === 0 && <div style={{ color: "var(--muted)" }}>{t("No accounts yet.")}</div>}
           {accounts.map((a) => (
             <div key={a.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "10px 0", borderTop: "1px solid var(--border)" }}>
               <span style={{ flex: 1, minWidth: 0 }}>
@@ -262,22 +268,22 @@ export default function Settings() {
                   <span style={{ display: "inline-flex", gap: 6 }}>
                     <input autoFocus style={{ ...input, padding: "4px 8px" }} value={editVal} placeholder={a.username}
                       onChange={(e) => setEditVal(e.target.value)} onKeyDown={(e) => e.key === "Enter" && saveName(a.id)} />
-                    <button className="btn" onClick={() => saveName(a.id)} style={{ padding: "4px 10px", color: "var(--accent)" }}>save</button>
+                    <button className="btn" onClick={() => saveName(a.id)} style={{ padding: "4px 10px", color: "var(--accent)" }}>{t("save")}</button>
                     <button className="btn" onClick={() => setEditId(null)} style={{ padding: "4px 10px", color: "var(--muted)" }}>✕</button>
                   </span>
                 ) : (
                   <>
                     <b>{a.display_name || a.username}</b> <span style={{ color: "var(--muted)" }}>({a.provider})</span>
-                    <button title="rename" onClick={() => { setEditId(a.id); setEditVal(a.display_name || ""); }}
+                    <button title={t("rename")} onClick={() => { setEditId(a.id); setEditVal(a.display_name || ""); }}
                       style={{ marginLeft: 6, background: "transparent", border: "none", color: "var(--muted)", cursor: "pointer" }}>✎</button>
                     {a.last_synced_at && <span style={{ color: "var(--muted)", marginLeft: 8, fontSize: 12 }}>synced {a.last_synced_at.slice(0, 10)}</span>}
                   </>
                 )}
               </span>
               <button className="btn btn-primary" disabled={busy === `sync${a.id}`} onClick={() => sync(a.id)} style={{ padding: "6px 12px" }}>
-                {busy === `sync${a.id}` ? "Syncing…" : "Sync"}
+                {busy === `sync${a.id}` ? t("Syncing…") : t("Sync")}
               </button>
-              <button className="btn btn-danger" onClick={() => del(a.id)} style={{ padding: "6px 12px" }}>Delete</button>
+              <button className="btn btn-danger" onClick={() => del(a.id)} style={{ padding: "6px 12px" }}>{t("Delete")}</button>
             </div>
           ))}
         </div>
@@ -285,11 +291,11 @@ export default function Settings() {
 
       <Section title="Data — import, export & share" desc="Everything is local. Move it between machines or publish a public snapshot.">
         <Row label="Export all data" hint="Full backup (accounts, repos, branches, PRs, commits) as JSON.">
-          <a href="/api/export" download="commit-grapher-export.json" className="btn" style={{ textDecoration: "none", padding: "6px 12px", color: "var(--accent)" }}>⬇ Export JSON</a>
+          <a href="/api/export" download="commit-grapher-export.json" className="btn" style={{ textDecoration: "none", padding: "6px 12px", color: "var(--accent)" }}>⬇ {t("Export JSON")}</a>
         </Row>
         <Row label="Import data" hint="Merge a previously exported JSON backup.">
           <label className="btn" style={{ padding: "6px 12px", color: "var(--accent)", cursor: "pointer" }}>
-            ⬆ Import JSON
+            ⬆ {t("Import JSON")}
             <input type="file" accept="application/json,.json" style={{ display: "none" }}
               onChange={async (e) => {
                 const f = e.target.files?.[0]; if (!f) return;
@@ -301,7 +307,7 @@ export default function Settings() {
         </Row>
         <Row label="Share / publish snapshot" hint="Download a public-graph.json of your current network — the format the GitHub Pages hero renders.">
           <button className="btn btn-accent2" disabled={sharing} onClick={shareSnapshot} style={{ padding: "6px 12px" }}>
-            {sharing ? "Building…" : "⇧ Public snapshot"}
+            {sharing ? t("Building…") : `⇧ ${t("Public snapshot")}`}
           </button>
         </Row>
       </Section>

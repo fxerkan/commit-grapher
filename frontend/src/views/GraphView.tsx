@@ -10,6 +10,7 @@ import { api, Facets, GraphData } from "../api";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
 import GraphQLPane from "../components/GraphQLPane";
 import { getSettings, physicsIterations, setSettings } from "../settings";
+import { useT } from "../i18n";
 
 const TYPES = ["account", "repo", "branch", "pr", "commit", "workitem"] as const;
 type NodeType = (typeof TYPES)[number];
@@ -174,6 +175,7 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
 const box: React.CSSProperties = { width: "100%", padding: "7px 9px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--fg)" };
 
 export default function GraphView() {
+  const t = useT();
   const [facets, setFacets] = useState<Facets | null>(null);
   const [data, setData] = useState<GraphData | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -317,35 +319,35 @@ export default function GraphView() {
   const extra = (
     <>
       <label style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--fg)", fontSize: 13 }}>
-        <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> Only my activity
+        <input type="checkbox" checked={onlyMine} onChange={(e) => setOnlyMine(e.target.checked)} /> {t("Only my activity")}
       </label>
       {onlyMine && (
-        <input style={box} placeholder="my names, comma-separated" value={myNamesStr}
+        <input style={box} placeholder={t("my names, comma-separated")} value={myNamesStr}
           onChange={(e) => { setMyNamesStr(e.target.value); setSettings({ myNames: e.target.value }); }} />
       )}
       <div>
-        <div className="field-label">Contributors</div>
+        <div className="field-label">{t("Contributors")}</div>
         <div style={{ display: "flex", gap: 4 }}>
           {(["all", "human", "ai"] as const).map((k) => (
             <button key={k} onClick={() => setFilters((f) => ({ ...f, humanAI: k }))}
-              className={filters.humanAI === k ? "btn btn-active" : "btn"}>{k === "ai" ? "AI" : k[0].toUpperCase() + k.slice(1)}</button>
+              className={filters.humanAI === k ? "btn btn-active" : "btn"}>{k === "ai" ? t("AI") : t(k === "all" ? "All" : "Human")}</button>
           ))}
         </div>
       </div>
       <div>
-        <div className="field-label">Search any node</div>
-        <input style={box} placeholder="repo / PR / commit…" value={filters.search} onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))} />
+        <div className="field-label">{t("Search any node")}</div>
+        <input style={box} placeholder={t("repo / PR / commit…")} value={filters.search} onChange={(e) => setFilters((f) => ({ ...f, search: e.target.value }))} />
       </div>
       <div>
-        <div className="field-label">Node types</div>
-        {TYPES.map((t) => (
-          <label key={t} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--fg)", padding: "2px 0", textTransform: "capitalize", fontSize: 13 }}>
-            <input type="checkbox" checked={filters.types.has(t)} onChange={() => setFilters((f) => { const s = new Set(f.types); s.has(t) ? s.delete(t) : s.add(t); return { ...f, types: s }; })} />
-            <span style={{ width: 11, height: 11, borderRadius: 3, background: TYPE_COLOR[t], flex: "0 0 auto", boxShadow: "0 0 0 1px rgba(0,0,0,.25) inset" }} /> {TYPE_LABEL[t] || t}
+        <div className="field-label">{t("Node types")}</div>
+        {TYPES.map((nt) => (
+          <label key={nt} style={{ display: "flex", alignItems: "center", gap: 6, color: "var(--fg)", padding: "2px 0", textTransform: "capitalize", fontSize: 13 }}>
+            <input type="checkbox" checked={filters.types.has(nt)} onChange={() => setFilters((f) => { const s = new Set(f.types); s.has(nt) ? s.delete(nt) : s.add(nt); return { ...f, types: s }; })} />
+            <span style={{ width: 11, height: 11, borderRadius: 3, background: TYPE_COLOR[nt], flex: "0 0 auto", boxShadow: "0 0 0 1px rgba(0,0,0,.25) inset" }} /> {t(TYPE_LABEL[nt] || nt)}
           </label>
         ))}
         <label style={{ display: "flex", alignItems: "center", gap: 6, margin: "8px 0 0", color: "var(--fg)", fontSize: 13 }}>
-          <input type="checkbox" checked={showArrows} onChange={(e) => setShowArrows(e.target.checked)} /> Show relationship arrows
+          <input type="checkbox" checked={showArrows} onChange={(e) => setShowArrows(e.target.checked)} /> {t("Show relationship arrows")}
         </label>
       </div>
     </>
@@ -354,11 +356,11 @@ export default function GraphView() {
   const footer = (
     <>
       <button className={activeCount ? "btn btn-accent2" : "btn"} style={{ marginTop: 4 }} onClick={resetAll}>
-        Reset filters {activeCount > 0 && `(${activeCount})`}
+        {t("Reset filters")} {activeCount > 0 && `(${activeCount})`}
       </button>
       <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 11 }}>
         {data ? `${data.nodes.length} nodes · ${data.edges.length} edges` : "…"}<br />
-        Drag nodes · scroll to zoom · click a repo to focus, click again / background to reset.
+        {t("Drag nodes · scroll to zoom · click a repo to focus")}
       </div>
     </>
   );

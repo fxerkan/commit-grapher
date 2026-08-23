@@ -9,6 +9,7 @@ import { api, ContributorGraph, ContributorDetail, ContributorNode, Facets } fro
 import { Opt } from "../components/MultiSelect";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
 import LanguagesBar from "../components/LanguagesBar";
+import { useT } from "../i18n";
 
 const S = (arr: Iterable<any>) => new Set(arr);
 const dicebear = (seed: string) => `https://api.dicebear.com/9.x/identicon/png?seed=${encodeURIComponent(seed || "?")}`;
@@ -93,6 +94,7 @@ function ContribCard({ c, rank, focused, onClick }: { c: ContributorNode & { wee
 }
 
 export default function ContributorsView() {
+  const t = useT();
   const [facets, setFacets] = useState<Facets | null>(null);
   const [graph, setGraph] = useState<ContributorGraph | null>(null);
   const [detail, setDetail] = useState<ContributorDetail | null>(null);
@@ -221,8 +223,8 @@ export default function ContributorsView() {
 
       <div className="stats-main">
         <div style={{ display: "flex", alignItems: "baseline", gap: 10, marginBottom: 10 }}>
-          <b style={{ fontSize: 18 }}>Contributors</b>
-          <span style={{ color: "var(--muted)", fontSize: 13 }}>{graph?.list.length ?? "…"} people · click an avatar to drill in</span>
+          <b style={{ fontSize: 18 }}>{t("Contributors")}</b>
+          <span style={{ color: "var(--muted)", fontSize: 13 }}>{graph?.list.length ?? "…"} {t("people · click an avatar to drill in")}</span>
           {focus && <button className="btn" style={{ marginLeft: "auto" }} onClick={() => setFocus(null)}>← all contributors</button>}
         </div>
 

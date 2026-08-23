@@ -4,6 +4,7 @@ import { api, CommitRow, Facets } from "../api";
 import { Opt } from "../components/MultiSelect";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
 import GitGraph from "../components/GitGraph";
+import { useT } from "../i18n";
 
 const toGit = (c: CommitRow) => ({
   sha: c.sha, parents: (c.parents || "").split(",").filter(Boolean), message: c.message || c.sha,
@@ -13,6 +14,7 @@ const S = (arr: Iterable<any>) => new Set(arr);
 const sel: React.CSSProperties = { padding: "7px 10px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--fg)" };
 
 export default function HeatmapView() {
+  const t = useT();
   const ref = useRef<HTMLDivElement>(null);
   const [counts, setCounts] = useState<Record<string, number> | null>(null);
   const [facets, setFacets] = useState<Facets | null>(null);
@@ -184,17 +186,17 @@ export default function HeatmapView() {
           </span>
         </div>
         <div className="panel"><div ref={ref} style={{ width: "100%", height: 190 }} /></div>
-        {total === 0 && <div style={{ color: "var(--muted)", marginTop: 10 }}>No commits for these filters.</div>}
+        {total === 0 && <div style={{ color: "var(--muted)", marginTop: 10 }}>{t("No commits for these filters.")}</div>}
 
         {day && (
           <div className="panel" style={{ marginTop: 18 }}>
             <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 10 }}>
               <b style={{ fontSize: 16 }}>Commits on {day}</b>
               <span style={{ color: "var(--muted)" }}>{dayCommits?.length ?? "…"} across {Object.keys(byRepo).length} repos</span>
-              <button onClick={() => setDay(null)} style={{ marginLeft: "auto", ...sel, cursor: "pointer" }}>✕ close</button>
+              <button onClick={() => setDay(null)} style={{ marginLeft: "auto", ...sel, cursor: "pointer" }}>✕ {t("close")}</button>
             </div>
 
-            {dayCommits === null ? <div style={{ color: "var(--muted)" }}>Loading…</div> :
+            {dayCommits === null ? <div style={{ color: "var(--muted)" }}>{t("Loading…")}</div> :
               Object.entries(byRepo).map(([repo, commits]) => (
                 <div key={repo} style={{ marginBottom: 18 }}>
                   <div style={{ display: "flex", alignItems: "center", gap: 8, marginBottom: 6 }}>

@@ -1,6 +1,7 @@
 import { lazy, Suspense, useEffect, useState } from "react";
 import { api } from "./api";
 import { useSettings, setSettings } from "./settings";
+import { useT } from "./i18n";
 
 const GraphView = lazy(() => import("./views/GraphView"));
 const HeatmapView = lazy(() => import("./views/HeatmapView"));
@@ -15,11 +16,12 @@ const TABS: [Tab, string][] = [
   ["heatmap", "Contribution Heatmap"],
   ["stats", "Stats"],
   ["contributors", "Contributors"],
-  ["settings", "⚙ Settings"],
+  ["settings", "Settings"],
 ];
 
 export default function App() {
   const s = useSettings();
+  const t = useT();
   const [tab, setTab] = useState<Tab>(s.landingTab);
   const [onboard, setOnboard] = useState(false);
 
@@ -37,7 +39,7 @@ export default function App() {
   if (onboard)
     return (
       <div style={{ height: "100vh", overflow: "auto", background: "var(--bg)", color: "var(--fg)" }}>
-        <Suspense fallback={<div style={{ padding: 40 }}>Loading…</div>}>
+        <Suspense fallback={<div style={{ padding: 40 }}>{t("Loading…")}</div>}>
           <Onboarding onDone={() => setOnboard(false)} />
         </Suspense>
       </div>
@@ -54,19 +56,19 @@ export default function App() {
           {TABS.map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}
               className={tab === id ? "btn btn-active" : "btn"}
-              style={{ padding: "6px 12px", color: tab === id ? "#fff" : "var(--muted)" }}>{label}</button>
+              style={{ padding: "6px 12px", color: tab === id ? "#fff" : "var(--muted)" }}>{id === "settings" ? "⚙ " : ""}{t(label)}</button>
           ))}
         </nav>
         <button onClick={() => setOnboard(true)} className="btn" style={{ marginLeft: "auto", color: "var(--muted)", padding: "6px 12px" }}>
-          ＋ Add account
+          ＋ {t("Add account")}
         </button>
-        <button onClick={() => setSettings({ theme: s.theme === "dark" ? "light" : "dark" })} title="Toggle theme"
+        <button onClick={() => setSettings({ theme: s.theme === "dark" ? "light" : "dark" })} title={t("Toggle theme")}
           className="btn" style={{ color: "var(--muted)", padding: "6px 12px" }}>
-          {s.theme === "dark" ? "🌙 Dark" : "☀️ Light"}
+          {s.theme === "dark" ? `🌙 ${t("Dark")}` : `☀️ ${t("Light")}`}
         </button>
       </header>
       <main style={{ flex: 1, minHeight: 0, overflow: "auto" }}>
-        <Suspense fallback={<div style={{ padding: 40 }}>Loading…</div>}>
+        <Suspense fallback={<div style={{ padding: 40 }}>{t("Loading…")}</div>}>
           {tab === "graph" && <GraphView />}
           {tab === "heatmap" && <HeatmapView />}
           {tab === "stats" && <StatsView />}

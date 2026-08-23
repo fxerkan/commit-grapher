@@ -8,8 +8,11 @@ export const ALL_NODE_TYPES: NodeType[] = ["account", "repo", "branch", "pr", "c
 export type Physics = "off" | "low" | "balanced" | "high";
 export type LandingTab = "graph" | "heatmap" | "stats" | "contributors";
 
+export type Lang = "en" | "tr";
+
 export interface AppSettings {
   // General
+  language: Lang;                 // UI language
   theme: "dark" | "light";
   accent: string;                 // primary accent color (CSS --accent)
   landingTab: LandingTab;         // which tab opens on launch
@@ -30,6 +33,7 @@ export interface AppSettings {
 }
 
 export const DEFAULTS: AppSettings = {
+  language: "en",
   theme: "dark",
   accent: "#58a6ff",
   landingTab: "graph",
