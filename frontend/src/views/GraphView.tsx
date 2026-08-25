@@ -71,7 +71,9 @@ function LoadGraph({ data, focus }: { data: GraphData; focus: number | null }) {
     const st = getSettings();
     const iterations = physicsIterations(st.physics, g.order);
     if (iterations > 0 && g.order > 1)
-      forceAtlas2.assign(g, { iterations, settings: { gravity: st.gravity, scalingRatio: st.scaling } });
+      // barnesHutOptimize makes the layout O(n log n) instead of O(n²) — big graphs settle in a
+      // fraction of the time, so the graph appears far sooner.
+      forceAtlas2.assign(g, { iterations, settings: { gravity: st.gravity, scalingRatio: st.scaling, barnesHutOptimize: g.order > 800 } });
     loadGraph(g);
     // Camera fit (whole graph, or zoom-to-focus on drill-down) is handled by <FitControl>,
     // which waits for Sigma's coordinate extent to settle before framing.
