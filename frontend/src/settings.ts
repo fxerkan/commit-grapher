@@ -24,6 +24,8 @@ export interface AppSettings {
   showArrows: boolean;            // default: draw relationship arrows
   introAnimation: boolean;        // staged node-by-node reveal on first graph load
   introSeconds: number;           // how long that reveal takes, in seconds
+  clusterByAccount: boolean;      // draw account cluster labels/hulls over the graph
+  nodeShapes: boolean;            // distinct pictogram shapes per node type (PR, work item, …)
   defaultNodeTypes: NodeType[];   // node types visible by default
   // Default filters (applied when the graph first loads)
   defaultProvider: string;        // "" = all providers
@@ -46,6 +48,8 @@ export const DEFAULTS: AppSettings = {
   showArrows: false,
   introAnimation: true,
   introSeconds: 6,
+  clusterByAccount: false,
+  nodeShapes: true,
   defaultNodeTypes: [...ALL_NODE_TYPES],
   defaultProvider: "",
   defaultHumanAI: "all",

@@ -1,6 +1,6 @@
 # commit-graph`er`
 
-<sub>[English](README.md) · 🌐 **Türkçe**</sub>
+<sub> · 🌐 </sub>
 
 > **Git geçmişin, deşifre edildi.** commit-grapher **tüm** sürüm kontrol
 > hesaplarındaki her commit'i, dalı ve pull request'i toplar, hepsini tek bir muhteşem
@@ -19,6 +19,7 @@ git meta verisini** okur ve token'larını işletim sisteminin anahtarlığında
 ## Neler elde edersin
 
 ### 🕸️ Ağ Grafiği — amiral gemisi
+
 **Hesaplar → repolar → dallar → PR'lar → commit'ler** yapısını gösteren, Obsidian tarzı,
 fizik motorlu bir WebGL grafiği (Sigma.js). Yakınlaş, sürükle, bir düğümün üzerine gelerek
 komşuluğunu aydınlat, bir repoya tıklayarak odaklan ve içine in. Zengin bir sol filtre
@@ -26,10 +27,12 @@ paneli; sağlayıcı, hesap, organizasyon, çalışma alanı, repo, dal, PR, yaz
 dilimler — üstüne insan-vs-YZ anahtarı ve "yalnızca benim aktivitem".
 
 ### 🟩 Katkı Isı Haritası
+
 Tanıdık GitHub takvimi — ama **her** sağlayıcı bir arada. Herhangi bir güne tıklayarak
 gerçek bir **git-grafiğine** in (dal/birleştirme şeritleri, tıklanabilir commit linkleri).
 
 ### 📊 İstatistik panosu
+
 KPI kartları ve gerçekten eğlenceli derinlemesine analizler: **Kompozisyon** (en uzun commit
 mesajın), **Çok uzun zaman önce, çok uzaktaki bir repoda** (en eski commit'in/PR'ın), **Kod
 Dostları** (en çok yan yana commit attığın kişiler), **Mezarlık** (terk ettiğin repolar),
@@ -38,10 +41,12 @@ zenginleştirme (yıldızlar, fork'lar, sürümler, katkıcılar, Docker çekilm
 indirmeleri). Her şey çapraz filtrelenir ve her bölüm katlanır.
 
 ### 👥 Katkıcılar
+
 Repolarına dokunmuş herkes, sıralanmış — katkıcı başına commit sayıları ve insan-vs-YZ
 kırılımıyla (evet, hangi commit'leri robotlarının yazdığını biliyor).
 
 ### 🔌 Hesaplar
+
 Bir sağlayıcıyı Personal Access Token veya GitHub OAuth cihaz akışıyla ekle, hesapları
 yeniden adlandır ve tüm veri setini JSON olarak dışa/içe aktar.
 
@@ -58,10 +63,10 @@ yeniden adlandır ve tüm veri setini JSON olarak dışa/içe aktar.
 </tr>
 <tr>
 <td><b>İstatistik panosu</b><br><img src="docs/assets/stats-1.png" alt="İstatistik panosu"></td>
-<td><b>İstatistik — repo istatistikleri &amp; grafikler</b><br><img src="docs/assets/stats-2.png" alt="İstatistik grafikleri"></td>
+<td><b>İstatistik — repo istatistikleri & grafikler</b><br><img src="docs/assets/stats-2.png" alt="İstatistik grafikleri"></td>
 </tr>
 <tr>
-<td><b>Hesaplar &amp; entegrasyonlar</b><br><img src="docs/assets/integrations.png" alt="Hesaplar"></td>
+<td><b>Hesaplar & entegrasyonlar</b><br><img src="docs/assets/integrations.png" alt="Hesaplar"></td>
 <td><b>Açık tema</b><br><img src="docs/assets/graph-white.png" alt="Ağ grafiği açık tema"></td>
 </tr>
 </table>
@@ -107,6 +112,7 @@ cd frontend && npm install && npm run dev           # http://localhost:5173
 # ...ya da bir kez derle ve backend'in :8000'de sunmasına izin ver
 cd frontend && npm run build
 ```
+
 </details>
 
 ## Bir hesap bağla
@@ -114,15 +120,15 @@ cd frontend && npm run build
 Uygulamayı aç → **Accounts** → bir sağlayıcı + Personal Access Token ekle → **Sync** → keşfet.
 Sağlayıcı bazında, adım adım kılavuzlar (token yetkileri, tuzaklar) [`docs/`](docs/) içinde:
 
-| Sağlayıcı | Kılavuz |
-|---|---|
-| GitHub | [docs/github.tr.md](docs/github.tr.md) |
-| Azure DevOps | [docs/azure-devops.tr.md](docs/azure-devops.tr.md) |
-| GitLab | [docs/gitlab.tr.md](docs/gitlab.tr.md) |
-| Bitbucket | [docs/bitbucket.tr.md](docs/bitbucket.tr.md) |
-| Gitea | [docs/gitea.tr.md](docs/gitea.tr.md) |
-| Codeberg | [docs/codeberg.tr.md](docs/codeberg.tr.md) |
-| Jira (issue eşleştirme) | [docs/jira.tr.md](docs/jira.tr.md) |
+| Sağlayıcı              | Kılavuz                                          |
+| ------------------------- | ------------------------------------------------- |
+| GitHub                    | [docs/github.tr.md](docs/github.tr.md)             |
+| Azure DevOps              | [docs/azure-devops.tr.md](docs/azure-devops.tr.md) |
+| GitLab                    | [docs/gitlab.tr.md](docs/gitlab.tr.md)             |
+| Bitbucket                 | [docs/bitbucket.tr.md](docs/bitbucket.tr.md)       |
+| Gitea                     | [docs/gitea.tr.md](docs/gitea.tr.md)               |
+| Codeberg                  | [docs/codeberg.tr.md](docs/codeberg.tr.md)         |
+| Jira (issue eşleştirme) | [docs/jira.tr.md](docs/jira.tr.md)                 |
 
 > **İpucu:** tam GitHub organizasyon kapsamı için **klasik** bir token (`repo` + `read:org`)
 > kullan. Fine-grained token'lar, organizasyon onaylamadıkça bir organizasyonun repolarını
@@ -149,4 +155,4 @@ içeren bir GitHub Pages sitesi.
 
 ---
 
-[FXerkan](https://github.com/FXerkan) tarafından geliştirildi · [github.com/fxerkan/commit-grapher](https://github.com/fxerkan/commit-grapher)
+[FXerkan](https://fxerkan.com) tarafından geliştirildi · Daha çok kod, daha az dert. · [GitHub](https://github.com/fxerkan/commit-grapher)

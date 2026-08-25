@@ -93,6 +93,12 @@
     transition:opacity .12s;max-width:260px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
     z-index:6;box-shadow:0 12px 30px -12px #000}
   .g-tip b{display:block;font-size:13px;margin-bottom:1px} .g-tip span{color:var(--muted)}
+  /* graph box is taller than the viewport (it fills the hero), so pin the controls ~40px above
+     the visible viewport bottom rather than the box bottom (which sits below the fold). */
+  .g-ctrls{position:absolute;right:12px;bottom:calc(100% - 100vh + 105px);z-index:5;display:flex;flex-direction:column;gap:6px}
+  .g-ctrls button{width:34px;height:34px;border-radius:8px;border:1px solid var(--border);background:var(--panel);
+    color:var(--fg);font-size:15px;line-height:1;cursor:pointer;display:flex;align-items:center;justify-content:center}
+  .g-ctrls button:hover{border-color:var(--accent);background:color-mix(in srgb,var(--accent) 20%,var(--panel))}
   .eyebrow{display:inline-flex;align-items:center;gap:8px;font-size:13px;font-weight:600;color:var(--accent);
     background:rgba(88,166,255,.1);border:1px solid rgba(88,166,255,.25);padding:6px 12px;border-radius:999px;margin-bottom:20px}
   h1{font-size:clamp(32px,4vw,54px);line-height:1.06;letter-spacing:-1.4px;margin:0 0 16px;font-weight:800;max-width:16ch}
@@ -107,6 +113,14 @@
   .pv svg,.pv img{width:15px;height:15px;display:block}
   .pv.jira{border-color:color-mix(in srgb,var(--accent2) 60%,var(--border));color:var(--fg);
     box-shadow:0 0 0 1px color-mix(in srgb,var(--accent2) 28%,transparent),0 8px 22px -10px var(--accent2)}
+  /* the non-Jira provider pills glow one at a time, in sequence (Jira stays lit) */
+  @keyframes pvGlow{
+    0%,14%{border-color:color-mix(in srgb,var(--accent) 60%,var(--border));color:var(--fg);
+      box-shadow:0 0 0 1px color-mix(in srgb,var(--accent) 28%,transparent),0 8px 22px -10px var(--accent)}
+    22%,100%{border-color:var(--border);color:var(--muted);box-shadow:none}
+  }
+  .pv.cycle{animation:pvGlow 9s linear infinite;animation-delay:calc(var(--i) * -1.5s)}
+  @media(prefers-reduced-motion:reduce){.pv.cycle{animation:none}}
   .cta{display:flex;gap:14px;flex-wrap:wrap;margin-bottom:30px}
   .chips{display:flex;gap:26px;flex-wrap:wrap}
   .chip .n{font-size:24px;font-weight:800}.chip .l{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.5px}
@@ -161,6 +175,7 @@
     /* stack: centered text on top, full-width graph below */
     .hero{min-height:auto;display:flex;flex-direction:column}
     .hero-graph{position:static;width:100%;height:56vh;order:2}
+    .g-ctrls{bottom:16px}   /* mobile: graph is its own 56vh box, so anchor to its bottom */
     .hero-text{margin-left:0;min-height:auto;text-align:center;align-items:center;padding:28px 20px 6px}
     h1,.sub,.unify{max-width:none}
     .hero-provs,.cta,.chips{justify-content:center}
@@ -200,16 +215,16 @@
       pulls every version-control host <b>and</b> your issue trackers together — all your scattered activity
       under <b>one framework</b>.</p>
     <div class="hero-provs">
-      <span class="pv"><img src="https://cdn.simpleicons.org/github/8b97a7" alt=""/>GitHub</span>
-      <span class="pv"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#3b8ceb" d="M0 8.877L2.247 5.91l8.405-3.416V.022l7.37 5.393L2.966 8.338v8.225L0 15.707zm24-4.45v14.651l-5.753 4.9-9.303-3.057v3.056l-5.978-2.398 15.057 1.798V6.075z"/></svg>Azure DevOps</span>
+      <span class="pv cycle" style="--i:0"><img src="https://cdn.simpleicons.org/github/8b97a7" alt=""/>GitHub</span>
+      <span class="pv cycle" style="--i:1"><svg viewBox="0 0 24 24" aria-hidden="true"><path fill="#3b8ceb" d="M0 8.877L2.247 5.91l8.405-3.416V.022l7.37 5.393L2.966 8.338v8.225L0 15.707zm24-4.45v14.651l-5.753 4.9-9.303-3.057v3.056l-5.978-2.398 15.057 1.798V6.075z"/></svg>Azure DevOps</span>
       <span class="pv jira"><img src="https://cdn.simpleicons.org/jira/58a6ff" alt=""/>Jira · work items</span>
-      <span class="pv"><img src="https://cdn.simpleicons.org/gitlab/8b97a7" alt=""/>GitLab</span>
-      <span class="pv"><img src="https://cdn.simpleicons.org/bitbucket/8b97a7" alt=""/>Bitbucket</span>
-      <span class="pv"><img src="https://cdn.simpleicons.org/gitea/8b97a7" alt=""/>Gitea</span>
-      <span class="pv"><img src="https://cdn.simpleicons.org/forgejo/8b97a7" alt=""/>Codeberg</span>
+      <span class="pv cycle" style="--i:2"><img src="https://cdn.simpleicons.org/gitlab/8b97a7" alt=""/>GitLab</span>
+      <span class="pv cycle" style="--i:3"><img src="https://cdn.simpleicons.org/bitbucket/8b97a7" alt=""/>Bitbucket</span>
+      <span class="pv cycle" style="--i:4"><img src="https://cdn.simpleicons.org/gitea/8b97a7" alt=""/>Gitea</span>
+      <span class="pv cycle" style="--i:5"><img src="https://cdn.simpleicons.org/forgejo/8b97a7" alt=""/>Codeberg</span>
     </div>
     <div class="cta">
-      <a class="btn btn-primary" href="https://github.com/fxerkan/commit-grapher">Get started — it's free</a>
+      <a class="btn btn-primary" href="https://github.com/fxerkan/commit-grapher">Get started</a>
       <a class="btn btn-ghost" href="#tour">Take the tour →</a>
     </div>
     <div class="chips" id="chips"></div>
@@ -392,7 +407,7 @@ git clone https://github.com/fxerkan/commit-grapher &amp;&amp; cd commit-grapher
     const attrOf = Object.fromEntries(data.nodes.map(n=>[n.key,n.attributes]));
     const parentOf = Object.fromEntries(data.nodes.map(n=>[n.key,n.parent]));
     const meta = {};                                // key -> {born, target}
-    let hovered=null, dragged=null, layoutOn=false;
+    let hovered=null, dragged=null, layoutOn=false, persist=false;   // persist = "Animate" button keeps physics on
 
     const FA2SET = {gravity:1.1, scalingRatio:42, slowDown:8, barnesHutOptimize:true};
     function jitter(){ return (Math.random()-.5)*8; }
@@ -459,7 +474,7 @@ git clone https://github.com/fxerkan/commit-grapher &amp;&amp; cd commit-grapher
     // ── driver: live layout (shape morphs) + size pop-in tween, every frame
     function frame(){
       const t=now();
-      if(layoutOn && g.order>2 && FA2) FA2.assign(g,{iterations:1, settings:FA2SET});   // keeps reshaping
+      if((layoutOn||persist) && g.order>2 && FA2) FA2.assign(g,{iterations:1, settings:FA2SET});   // keeps reshaping
       g.forEachNode((k,a)=>{
         const m=meta[k]; if(!m) return;
         const p=Math.min(1,(t-m.born)/430);
@@ -475,7 +490,21 @@ git clone https://github.com/fxerkan/commit-grapher &amp;&amp; cd commit-grapher
     requestAnimationFrame(frame);
 
     // click empty space → gentle re-shuffle (re-run layout briefly) for extra life
-    el.addEventListener("click", e=>{ if(e.target.tagName==="CANVAS" && !dragged){ layoutOn=true; setTimeout(()=>{layoutOn=false;},1800);} });
+    el.addEventListener("click", e=>{ if(e.target.tagName==="CANVAS" && !dragged && !persist){ layoutOn=true; setTimeout(()=>{layoutOn=false;},1800);} });
+
+    // ── control cluster (zoom / center / fullscreen / animate) — mirrors the app
+    const cam = renderer.getCamera();
+    const ctr = document.createElement("div"); ctr.className="g-ctrls";
+    const mkBtn = (label,title,fn)=>{ const b=document.createElement("button"); b.textContent=label; b.title=title;
+      b.onclick=(ev)=>{ev.stopPropagation(); fn(b);}; ctr.appendChild(b); return b; };
+    mkBtn("+","Zoom in", ()=>cam.animatedZoom({duration:250}));
+    mkBtn("−","Zoom out", ()=>cam.animatedUnzoom({duration:250}));
+    mkBtn("⊙","Center", ()=>cam.animatedReset({duration:400}));
+    mkBtn("⛶","Fullscreen", ()=>{ const box=document.querySelector(".hero-graph");
+      if(document.fullscreenElement) document.exitFullscreen(); else box.requestFullscreen&&box.requestFullscreen(); });
+    mkBtn("▶","Start layout animation", (b)=>{ persist=!persist; b.textContent=persist?"⏸":"▶";
+      b.title=persist?"Stop layout animation":"Start layout animation"; });
+    el.appendChild(ctr);
   }catch(err){ document.getElementById("graph").style.display="none"; console.error(err); }
 })();
 </script>

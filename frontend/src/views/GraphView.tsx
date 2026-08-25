@@ -3,13 +3,19 @@ import Graph from "graphology";
 import forceAtlas2 from "graphology-layout-forceatlas2";
 import {
   SigmaContainer, useLoadGraph, useRegisterEvents, useSetSettings, useSigma,
+  ControlsContainer, ZoomControl, FullScreenControl,
 } from "@react-sigma/core";
 import "@react-sigma/core/lib/react-sigma.min.css";
 import { EdgeArrowProgram, EdgeRectangleProgram } from "sigma/rendering";
+import { NodePictogramProgram } from "@sigma/node-image";
 import { api, Facets, GraphData } from "../api";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
 import GraphQLPane from "../components/GraphQLPane";
-import { getSettings, physicsIterations, setSettings } from "../settings";
+import { getSettings, physicsIterations, setSettings, useSettings } from "../settings";
+import {
+  AnimateControl, LayoutControl, LayoutKind, ClusterLabels, accountClusters,
+  applyNodeShapes, computeStats, useCapHidden,
+} from "../graphExtras";
 import { useT } from "../i18n";
 
 const TYPES = ["account", "repo", "branch", "pr", "commit", "workitem"] as const;
@@ -79,14 +85,15 @@ function LoadGraph({ data, focus }: { data: GraphData; focus: number | null }) {
   return null;
 }
 
-// Dragging nodes (standard @react-sigma pattern).
-function DragControl() {
+// Dragging nodes (standard @react-sigma pattern). draggingRef lets the continuous-layout
+// loop pause physics while a node is held so it doesn't fight the cursor.
+function DragControl({ draggingRef }: { draggingRef: React.MutableRefObject<boolean> }) {
   const sigma = useSigma();
   const reg = useRegisterEvents();
   const dragged = useRef<string | null>(null);
   useEffect(() => {
     reg({
-      downNode: (e) => { dragged.current = e.node; sigma.getGraph().setNodeAttribute(e.node, "highlighted", true); },
+      downNode: (e) => { dragged.current = e.node; draggingRef.current = true; sigma.getGraph().setNodeAttribute(e.node, "highlighted", true); },
       mousemovebody: (e) => {
         if (!dragged.current) return;
         const p = sigma.viewportToGraph(e);
@@ -97,20 +104,28 @@ function DragControl() {
       },
       mouseup: () => {
         if (dragged.current) sigma.getGraph().removeNodeAttribute(dragged.current, "highlighted");
-        dragged.current = null;
+        dragged.current = null; draggingRef.current = false;
       },
       mousedown: () => { if (!sigma.getCustomBBox()) sigma.setCustomBBox(sigma.getBBox()); },
     });
-  }, [reg, sigma]);
+  }, [reg, sigma, draggingRef]);
   return null;
 }
 
-function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus, onFocus, showArrows, queryKeys, revealed, onHover }: {
+// Apply / clear distinct node shapes whenever the setting or the loaded graph changes.
+function ShapeControl({ on, dataKey }: { on: boolean; dataKey: string }) {
+  const sigma = useSigma();
+  useEffect(() => { applyNodeShapes(sigma.getGraph(), on); sigma.refresh(); }, [on, dataKey, sigma]);
+  return null;
+}
+
+function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus, onFocus, showArrows, queryKeys, revealed, capHidden, onHover, onStats }: {
   filters: Filters; branchSel: Set<string | number>; prSel: Set<string | number>;
   botSet: Set<string>; myNames: Set<string>; dataKey: string;
   focus: number | null; onFocus: (id: number | null) => void; showArrows: boolean;
-  queryKeys: Set<string> | null; revealed: Set<string> | null;
+  queryKeys: Set<string> | null; revealed: Set<string> | null; capHidden: Set<string>;
   onHover: (info: { key: string; attrs: any; x: number; y: number } | null) => void;
+  onStats: (v: { nodes: number; edges: number }) => void;
 }) {
   const sigma = useSigma();
   const reg = useRegisterEvents();
@@ -145,6 +160,7 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
     const q = filters.search.trim().toLowerCase();
     // key-aware so branch (by name) and PR (by id from the "pr:<id>" key) selections work
     const match = (node: string, data: any) => {
+      if (capHidden.has(node)) return false;  // performance cap: node beyond the render limit
       if (queryKeys && !queryKeys.has(node)) return false;  // GraphQL result applied as a canvas filter
       if (!filters.types.has(data.nodeType)) return false;
       if (q && !(data.label || "").toLowerCase().includes(q)) return false;
@@ -184,7 +200,13 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
         return { ...data, type };
       },
     });
-  }, [hovered, filters, branchSel, prSel, myNames, botSet, showArrows, queryKeys, revealed, sigma, setSettings]);
+    // Live visible counts for the stats panel (single source of truth: the same match()).
+    const vis = new Set<string>();
+    graph.forEachNode((n, d) => { if (match(n, d)) vis.add(n); });
+    let ve = 0;
+    graph.forEachEdge((_e, _a, s, t) => { if (vis.has(s) && vis.has(t)) ve++; });
+    onStats({ nodes: vis.size, edges: ve });
+  }, [hovered, filters, branchSel, prSel, myNames, botSet, showArrows, queryKeys, revealed, capHidden, sigma, setSettings, onStats]);
   return null;
 }
 
@@ -256,6 +278,7 @@ function NodeTooltip({ info, t }: { info: { key: string; attrs: any; x: number; 
 
 export default function GraphView() {
   const t = useT();
+  const s = useSettings();  // live: clusterByAccount, nodeShapes, gravity, scaling
   const [facets, setFacets] = useState<Facets | null>(null);
   const [data, setData] = useState<GraphData | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -265,6 +288,13 @@ export default function GraphView() {
   const [onlyMine, setOnlyMine] = useState(() => getSettings().defaultOnlyMine);
   const [showArrows, setShowArrows] = useState(() => getSettings().showArrows);
   const [myNamesStr, setMyNamesStr] = useState(() => getSettings().myNames);
+  // Power-tool state: continuous layout, layout kind, performance cap, live counts.
+  const [animating, setAnimating] = useState(false);
+  const [layout, setLayout] = useState<LayoutKind>("forceatlas2");
+  const [nodeCap, setNodeCap] = useState(100000);
+  const [vis, setVis] = useState({ nodes: 0, edges: 0 });
+  const draggingRef = useRef(false);
+  const containerRef = useRef<HTMLDivElement>(null);
 
   // server-side filters
   const [provider, setProvider] = useState<Set<string | number>>(
@@ -371,6 +401,7 @@ export default function GraphView() {
     labelWeight: "600", zIndex: true,
     labelRenderedSizeThreshold: getSettings().labelDensity,  // Settings: lower = more labels (picked up on remount)
     edgeProgramClasses: { line: EdgeRectangleProgram, arrow: EdgeArrowProgram },
+    nodeProgramClasses: { pictogram: NodePictogramProgram },  // distinct shapes per node type
   }), [textColor, halo, edgeColor]);
 
   const activeCount = provider.size + organizations.size + accountIds.size + projects.size + repos.size
@@ -390,6 +421,10 @@ export default function GraphView() {
   };
   const applyQuery = (keys: string[] | null) => setQueryKeys(keys && keys.length ? new Set(keys) : null);
   const canvasKeys = useMemo(() => new Set((data?.nodes || []).map((n) => n.key)), [data]);
+  const clusters = useMemo(() => (data ? accountClusters(data) : []), [data]);
+  const capHidden = useCapHidden(data, nodeCap);
+  const stats = computeStats({ nodes: data?.nodes.length || 0, edges: data?.edges.length || 0 }, vis);
+  const onStats = useMemo(() => (v: { nodes: number; edges: number }) => setVis(v), []);
 
   const providerOpts = (facets?.providers || []).map((p) => ({ key: p, label: p }));
   const orgOpts = (facets?.organizations || []).filter((o) => !providerStr || o.provider === providerStr).map((o) => ({ key: o.name, label: o.name }));
@@ -460,16 +495,55 @@ export default function GraphView() {
           <input type="checkbox" checked={showArrows} onChange={(e) => setShowArrows(e.target.checked)} /> {t("Show relationship arrows")}
         </label>
       </div>
+      <div>
+        <div className="field-label">{t("Layout")}</div>
+        <select style={box} value={layout} onChange={(e) => setLayout(e.target.value as LayoutKind)}>
+          <option value="forceatlas2">{t("Force-directed")}</option>
+          <option value="circular">{t("Circular")}</option>
+          <option value="grid">{t("Grid")}</option>
+          <option value="random">{t("Random")}</option>
+        </select>
+      </div>
     </>
   );
 
+  const total = data?.nodes.length || 0;
+  const statRow = (label: string, value: React.ReactNode) => (
+    <div style={{ display: "flex", justifyContent: "space-between", gap: 12, lineHeight: 1.7 }}>
+      <span style={{ color: "var(--muted)" }}>{t(label)}</span>
+      <b style={{ fontVariantNumeric: "tabular-nums" }}>{value}</b>
+    </div>
+  );
   const footer = (
     <>
       <button className={activeCount ? "btn btn-accent2" : "btn"} style={{ marginTop: 4 }} onClick={resetAll}>
         {t("Reset filters")} {activeCount > 0 && `(${activeCount})`}
       </button>
+
+      {/* Performance cap — trims the graph (commits first) to keep big datasets smooth. */}
+      <div style={{ marginTop: 14, borderTop: "1px solid var(--border)", paddingTop: 12 }}>
+        <div className="field-label" style={{ display: "flex", justifyContent: "space-between" }}>
+          <span>{t("Max nodes rendered")}</span>
+          <b style={{ color: "var(--fg)", fontVariantNumeric: "tabular-nums" }}>{Math.min(nodeCap, total).toLocaleString()}</b>
+        </div>
+        <input type="range" style={{ width: "100%" }} min={Math.min(50, total)} max={Math.max(50, total)} step={10}
+          value={Math.min(nodeCap, total)} onChange={(e) => setNodeCap(Number(e.target.value))} disabled={total < 50} />
+        <div style={{ color: "var(--muted)", fontSize: 11 }}>{t("Lower to boost performance on huge graphs.")}</div>
+      </div>
+
+      {/* Graph statistics — live counts, density and average degree. */}
+      <div style={{ marginTop: 12, fontSize: 12 }}>
+        <div className="field-label">{t("Graph statistics")}</div>
+        {statRow("Total nodes", total.toLocaleString())}
+        {statRow("Total edges", stats.totalEdges.toLocaleString())}
+        {statRow("Visible nodes", stats.visibleNodes.toLocaleString())}
+        {statRow("Visible edges", stats.visibleEdges.toLocaleString())}
+        {statRow("Relations", stats.visibleEdges.toLocaleString())}
+        {statRow("Density", `${(stats.density * 100).toFixed(3)}%`)}
+        {statRow("Avg degree", stats.avgDegree.toFixed(1))}
+      </div>
+
       <div style={{ marginTop: 12, color: "var(--muted)", fontSize: 11 }}>
-        {data ? `${data.nodes.length} nodes · ${data.edges.length} edges` : "…"}<br />
         {t("Drag nodes · scroll to zoom · click a repo to focus")}
       </div>
     </>
@@ -486,7 +560,7 @@ export default function GraphView() {
           extra={extra} footer={footer} width={width} onWidthChange={setWidth}
           dateRange={{ start, end, setStart, setEnd }} />
 
-        <div style={{ flex: 1, minWidth: 0, overflow: "hidden", position: "relative" }}>
+        <div ref={containerRef} style={{ flex: 1, minWidth: 0, overflow: "hidden", position: "relative" }}>
           {updating && <div style={{ position: "absolute", top: 10, right: 14, zIndex: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", fontSize: 12, color: "var(--muted)" }}>{t("updating…")}</div>}
           {!data ? (
             <div style={{ padding: 40 }}>{t("Loading graph…")}</div>
@@ -496,8 +570,20 @@ export default function GraphView() {
             <ErrorBoundary>
               <SigmaContainer key={theme} style={{ height: "100%", background: "var(--bg)" }} settings={sigmaSettings}>
                 <LoadGraph data={data} focus={focus} />
-                <DragControl />
-                <Controller filters={filters} branchSel={branchSel} prSel={prSel} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} queryKeys={queryKeys} revealed={revealed} onHover={setHover} />
+                <DragControl draggingRef={draggingRef} />
+                <ShapeControl on={s.nodeShapes} dataKey={dataKey} />
+                <LayoutControl layout={layout} gravity={s.gravity} scaling={s.scaling} />
+                <AnimateControl running={animating} draggingRef={draggingRef} gravity={s.gravity} scaling={s.scaling} />
+                <Controller filters={filters} branchSel={branchSel} prSel={prSel} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} queryKeys={queryKeys} revealed={revealed} capHidden={capHidden} onHover={setHover} onStats={onStats} />
+                <ClusterLabels enabled={s.clusterByAccount} clusters={clusters} />
+                <ControlsContainer position="bottom-right">
+                  <ZoomControl />
+                  <FullScreenControl container={containerRef} />
+                  <div className="react-sigma-control">
+                    <button type="button" title={t(animating ? "Stop layout animation" : "Start layout animation")}
+                      onClick={() => setAnimating((a) => !a)}>{animating ? "⏸" : "▶"}</button>
+                  </div>
+                </ControlsContainer>
               </SigmaContainer>
               {hover && <NodeTooltip info={hover} t={t} />}
             </ErrorBoundary>

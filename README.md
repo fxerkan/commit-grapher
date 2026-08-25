@@ -1,6 +1,6 @@
 # commit-graph`er`
 
-<sub>🌐 **English** · [Türkçe](README.tr.md)</sub>
+<sub>🌐  · </sub>
 
 > **Your git history, deanonymized.** commit-grapher rounds up every commit, branch, and
 > pull request from **all** your version-control accounts, drags them into one gloriously
@@ -19,16 +19,19 @@ shouldn't be.
 ## What you get
 
 ### 🕸️ Network Graph — the flagship
+
 An Obsidian-style, physics-driven WebGL graph (Sigma.js) of **accounts → repos → branches →
 PRs → commits**. Zoom, drag, hover to light up a node's neighbourhood, click a repo to focus
 and drill in. A rich left filter panel slices by provider, account, organization, workspace,
 repo, branch, PR, author, tag — plus a human-vs-AI toggle and "only my activity".
 
 ### 🟩 Contribution Heatmap
+
 The familiar GitHub calendar — except combined across **every** provider at once. Click any
 day to drill into a real **git-graph** (branch/merge lanes, clickable commit links).
 
 ### 📊 Stats dashboard
+
 KPI cards plus genuinely fun deep-dives: **The Essay** (your longest commit message),
 **A long time ago, in a repo far, far away** (your oldest commit/PR), **Code Besties**
 (who you commit alongside most), **The Graveyard** (repos you've ghosted), your
@@ -37,10 +40,12 @@ releases, contributors, Docker pulls, npm downloads). Everything cross-filters a
 section collapses.
 
 ### 👥 Contributors
+
 Everyone who's ever touched your repos, ranked — with per-contributor commit counts and a
 human-vs-AI breakdown (yes, it knows which commits your robots wrote).
 
 ### 🔌 Accounts
+
 Add a provider with a Personal Access Token or GitHub OAuth device flow, rename accounts,
 and export/import your whole dataset as JSON.
 
@@ -57,10 +62,10 @@ and export/import your whole dataset as JSON.
 </tr>
 <tr>
 <td><b>Stats dashboard</b><br><img src="docs/assets/stats-1.png" alt="Stats dashboard"></td>
-<td><b>Stats — repository stats &amp; charts</b><br><img src="docs/assets/stats-2.png" alt="Stats charts"></td>
+<td><b>Stats — repository stats & charts</b><br><img src="docs/assets/stats-2.png" alt="Stats charts"></td>
 </tr>
 <tr>
-<td><b>Accounts &amp; integrations</b><br><img src="docs/assets/integrations.png" alt="Accounts"></td>
+<td><b>Accounts & integrations</b><br><img src="docs/assets/integrations.png" alt="Accounts"></td>
 <td><b>Light theme</b><br><img src="docs/assets/graph-white.png" alt="Network graph light theme"></td>
 </tr>
 </table>
@@ -103,6 +108,7 @@ cd frontend && npm install && npm run dev           # http://localhost:5173
 # ...or build once and let the backend serve it on :8000
 cd frontend && npm run build
 ```
+
 </details>
 
 ## Connect an account
@@ -110,15 +116,15 @@ cd frontend && npm run build
 Open the app → **Accounts** → add a provider + Personal Access Token → **Sync** → explore.
 Per-provider, step-by-step guides (token scopes, gotchas) live in [`docs/`](docs/):
 
-| Provider | Guide |
-|---|---|
-| GitHub | [docs/github.md](docs/github.md) |
-| Azure DevOps | [docs/azure-devops.md](docs/azure-devops.md) |
-| GitLab | [docs/gitlab.md](docs/gitlab.md) |
-| Bitbucket | [docs/bitbucket.md](docs/bitbucket.md) |
-| Gitea | [docs/gitea.md](docs/gitea.md) |
-| Codeberg | [docs/codeberg.md](docs/codeberg.md) |
-| Jira (issue matching) | [docs/jira.md](docs/jira.md) |
+| Provider              | Guide                                       |
+| --------------------- | ------------------------------------------- |
+| GitHub                | [docs/github.md](docs/github.md)             |
+| Azure DevOps          | [docs/azure-devops.md](docs/azure-devops.md) |
+| GitLab                | [docs/gitlab.md](docs/gitlab.md)             |
+| Bitbucket             | [docs/bitbucket.md](docs/bitbucket.md)       |
+| Gitea                 | [docs/gitea.md](docs/gitea.md)               |
+| Codeberg              | [docs/codeberg.md](docs/codeberg.md)         |
+| Jira (issue matching) | [docs/jira.md](docs/jira.md)                 |
 
 > **Tip:** for full GitHub org coverage, use a **classic** token (`repo` + `read:org`).
 > Fine-grained tokens can't see an org's repos until the org approves them.
@@ -142,4 +148,4 @@ more providers, richer stats, and a public GitHub Pages site with a live animate
 
 ---
 
-Built by [FXerkan](https://github.com/FXerkan) · [github.com/fxerkan/commit-grapher](https://github.com/fxerkan/commit-grapher)
+Developed by [FXerkan](https://fxerkan.com) · Code more, worry less. · [GitHub](https://github.com/fxerkan/commit-grapher)

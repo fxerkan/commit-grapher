@@ -134,3 +134,13 @@ input, select, button, textarea { font-family: inherit; }
 @keyframes cg-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .card, .kpi { animation: cg-fade .3s ease both; }
 .stats-loading { opacity: .55; transition: opacity .2s ease; pointer-events: none; }
+
+/* Sigma control cluster (bottom-right): theme-aware buttons matching the app chrome. */
+.react-sigma-controls { display: flex; flex-direction: column; gap: 6px; right: 12px !important; bottom: 12px !important; }
+.react-sigma-control { box-shadow: none; }
+.react-sigma-control button {
+  width: 34px; height: 34px; border-radius: 8px; cursor: pointer;
+  background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+  display: flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1;
+}
+.react-sigma-control button:hover { background: color-mix(in srgb, var(--accent) 20%, var(--panel)); border-color: var(--accent); }

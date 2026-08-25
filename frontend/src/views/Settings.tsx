@@ -213,6 +213,12 @@ export default function Settings() {
             <Slider value={s.introSeconds} min={2} max={20} step={1} onChange={(v) => set("introSeconds", v)} />
           </Row>
         )}
+        <Row label="Cluster by account" hint="Overlay a floating label at each account's cluster so subtrees are easy to tell apart.">
+          <Switch on={s.clusterByAccount} onChange={(v) => set("clusterByAccount", v)} />
+        </Row>
+        <Row label="Distinct node shapes" hint="Give pull requests and work items their own glyphs instead of plain circles.">
+          <Switch on={s.nodeShapes} onChange={(v) => set("nodeShapes", v)} />
+        </Row>
         <Row label="Node types shown by default" hint="Which node kinds are visible when the graph opens.">
           <div style={{ display: "flex", gap: 10, flexWrap: "wrap", justifyContent: "flex-end" }}>
             {ALL_NODE_TYPES.map((nt) => (
