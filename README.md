@@ -82,24 +82,34 @@ and export/import your whole dataset as JSON.
 
 ## Run it
 
-One command — creates the venv, installs everything, builds the frontend, and serves it all on `:8000`:
+One command — creates the venv, installs everything, builds the frontend, and serves it all on `:8000`.
+Requires **Python ≥ 3.13**, **Node**, and **npm** on your PATH.
+
+**macOS / Linux**
 
 ```bash
 ./start.sh                # → http://localhost:8000
+./start.sh dev            # hot reload: backend :8000 · frontend :5173
 ```
 
-Prefer hot reload while hacking? Runs the backend and the Vite dev server together:
+**Windows** (PowerShell, or double-click `start.bat`)
 
-```bash
-./start.sh dev            # backend :8000 · frontend :5173
+```powershell
+.\start.ps1               # → http://localhost:8000
+.\start.ps1 dev           # hot reload: backend :8000 · frontend :5173
 ```
+
+> First run on Windows blocked by execution policy? Use `powershell -ExecutionPolicy Bypass -File .\start.ps1`
+> (or just run `start.bat`, which sets it for you).
 
 <details>
 <summary>…or the manual steps</summary>
 
 ```bash
-# backend (Python ≥ 3.13)
+# backend (Python ≥ 3.13) — macOS/Linux
 python -m venv .venv && source .venv/bin/activate
+# Windows (PowerShell):  python -m venv .venv ; .venv\Scripts\Activate.ps1
+# Windows (cmd.exe):     python -m venv .venv  &  .venv\Scripts\activate.bat
 pip install -e backend
 uvicorn app.main:app --app-dir backend --reload    # http://localhost:8000
 

@@ -85,25 +85,33 @@ yeniden adlandır ve tüm veri setini JSON olarak dışa/içe aktar.
 ## Çalıştır
 
 Tek komut — venv'i oluşturur, her şeyi kurar, frontend'i derler ve hepsini `:8000` üzerinde
-sunar:
+sunar. PATH'inde **Python ≥ 3.13**, **Node** ve **npm** gerektirir.
+
+**macOS / Linux**
 
 ```bash
 ./start.sh                # → http://localhost:8000
+./start.sh dev            # hot reload: backend :8000 · frontend :5173
 ```
 
-Geliştirirken hot reload mı istiyorsun? Backend ile Vite geliştirme sunucusunu birlikte
-çalıştırır:
+**Windows** (PowerShell ya da `start.bat`'a çift tıkla)
 
-```bash
-./start.sh dev            # backend :8000 · frontend :5173
+```powershell
+.\start.ps1               # → http://localhost:8000
+.\start.ps1 dev           # hot reload: backend :8000 · frontend :5173
 ```
+
+> Windows'ta ilk çalıştırmada execution policy engeli mi çıktı? `powershell -ExecutionPolicy Bypass -File .\start.ps1`
+> kullan (ya da bunu senin için ayarlayan `start.bat`'ı çalıştır).
 
 <details>
 <summary>…ya da elle adımlar</summary>
 
 ```bash
-# backend (Python ≥ 3.13)
+# backend (Python ≥ 3.13) — macOS/Linux
 python -m venv .venv && source .venv/bin/activate
+# Windows (PowerShell):  python -m venv .venv ; .venv\Scripts\Activate.ps1
+# Windows (cmd.exe):     python -m venv .venv  &  .venv\Scripts\activate.bat
 pip install -e backend
 uvicorn app.main:app --app-dir backend --reload    # http://localhost:8000
 

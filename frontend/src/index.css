@@ -134,13 +134,26 @@ input, select, button, textarea { font-family: inherit; }
 @keyframes cg-fade { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
 .card, .kpi { animation: cg-fade .3s ease both; }
 .stats-loading { opacity: .55; transition: opacity .2s ease; pointer-events: none; }
+@keyframes cg-spin { to { transform: rotate(360deg); } }
+.cg-loader { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px; color: var(--muted); }
+.cg-loader .ring { width: 42px; height: 42px; border-radius: 50%; border: 3px solid var(--border); border-top-color: var(--accent); animation: cg-spin .8s linear infinite; }
 
-/* Sigma control cluster (bottom-right): theme-aware buttons matching the app chrome. */
-.react-sigma-controls { display: flex; flex-direction: column; gap: 6px; right: 12px !important; bottom: 12px !important; }
-.react-sigma-control { box-shadow: none; }
-.react-sigma-control button {
-  width: 34px; height: 34px; border-radius: 8px; cursor: pointer;
+/* Sigma control cluster (bottom-right): theme-aware buttons matching the app chrome.
+   react-sigma ships a white container + black icons that vanish on light theme and look
+   wrong on dark, so we override the container to transparent and style each button. */
+.react-sigma-controls {
+  display: flex; flex-direction: column; gap: 6px;
+  right: 12px !important; bottom: 12px !important;
+  background: transparent !important; border: none !important; border-radius: 0 !important;
+}
+.react-sigma-control { background: transparent !important; border: none !important; width: auto; height: auto; line-height: normal; box-shadow: none; }
+.react-sigma-controls .react-sigma-control > button {
+  width: 34px; height: 34px; border-radius: 8px; cursor: pointer; padding: 0;
   background: var(--panel); color: var(--fg); border: 1px solid var(--border);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.28);
   display: flex; align-items: center; justify-content: center; font-size: 15px; line-height: 1;
 }
-.react-sigma-control button:hover { background: color-mix(in srgb, var(--accent) 20%, var(--panel)); border-color: var(--accent); }
+.react-sigma-controls .react-sigma-control > button:hover {
+  background: color-mix(in srgb, var(--accent) 22%, var(--panel)); border-color: var(--accent);
+}
+.react-sigma-controls .react-sigma-control > button svg { width: 1em; height: 1em; fill: currentColor; }

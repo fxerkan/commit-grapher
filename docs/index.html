@@ -334,10 +334,14 @@
   <p class="lead">Python ≥ 3.13 backend, Vite/React frontend. Nothing to deploy. One script does it all.</p>
   <pre><code># clone, then one command — venv + install + build + serve on :8000
 git clone https://github.com/fxerkan/commit-grapher &amp;&amp; cd commit-grapher
-./start.sh                # → http://localhost:8000
 
-# prefer hot reload while hacking? backend :8000 + Vite :5173 together
-./start.sh dev</code></pre>
+# macOS / Linux
+./start.sh                # → http://localhost:8000
+./start.sh dev            # hot reload: backend :8000 + Vite :5173
+
+# Windows (PowerShell, or double-click start.bat)
+.\start.ps1               # → http://localhost:8000
+.\start.ps1 dev           # hot reload: backend :8000 + Vite :5173</code></pre>
 </div></section>
 
 <section id="docs" style="padding-top:0"><div class="wrap">

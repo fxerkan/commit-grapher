@@ -13,8 +13,8 @@ import FilterPanel, { FilterDim } from "../components/FilterPanel";
 import GraphQLPane from "../components/GraphQLPane";
 import { getSettings, physicsIterations, setSettings, useSettings } from "../settings";
 import {
-  AnimateControl, LayoutControl, LayoutKind, ClusterLabels, accountClusters,
-  applyNodeShapes, computeStats, useCapHidden,
+  AnimateControl, LayoutControl, LayoutKind, ClusterBy, ShapeControl, FitControl,
+  nodeGroupColors, computeStats, useCapHidden,
 } from "../graphExtras";
 import { useT } from "../i18n";
 
@@ -73,27 +73,21 @@ function LoadGraph({ data, focus }: { data: GraphData; focus: number | null }) {
     if (iterations > 0 && g.order > 1)
       forceAtlas2.assign(g, { iterations, settings: { gravity: st.gravity, scalingRatio: st.scaling } });
     loadGraph(g);
-    // Focused a repo -> zoom in on that node so it fills the canvas (drill-down); otherwise
-    // reset the camera to fit the whole loaded set.
-    setTimeout(() => {
-      const cam = sigma.getCamera();
-      const nd = focus != null ? sigma.getNodeDisplayData(`repo:${focus}`) : null;
-      if (nd) cam.animate({ x: nd.x, y: nd.y, ratio: 0.4 }, { duration: 500 });
-      else cam.animatedReset({ duration: 400 });
-    }, 80);
+    // Camera fit (whole graph, or zoom-to-focus on drill-down) is handled by <FitControl>,
+    // which waits for Sigma's coordinate extent to settle before framing.
   }, [data, loadGraph, sigma, focus]);
   return null;
 }
 
-// Dragging nodes (standard @react-sigma pattern). draggingRef lets the continuous-layout
-// loop pause physics while a node is held so it doesn't fight the cursor.
-function DragControl({ draggingRef }: { draggingRef: React.MutableRefObject<boolean> }) {
+// Dragging nodes (standard @react-sigma pattern). Works during continuous layout too —
+// the worker reads live positions, so a dragged node just feeds back into the simulation.
+function DragControl() {
   const sigma = useSigma();
   const reg = useRegisterEvents();
   const dragged = useRef<string | null>(null);
   useEffect(() => {
     reg({
-      downNode: (e) => { dragged.current = e.node; draggingRef.current = true; sigma.getGraph().setNodeAttribute(e.node, "highlighted", true); },
+      downNode: (e) => { dragged.current = e.node; sigma.getGraph().setNodeAttribute(e.node, "highlighted", true); },
       mousemovebody: (e) => {
         if (!dragged.current) return;
         const p = sigma.viewportToGraph(e);
@@ -104,26 +98,20 @@ function DragControl({ draggingRef }: { draggingRef: React.MutableRefObject<bool
       },
       mouseup: () => {
         if (dragged.current) sigma.getGraph().removeNodeAttribute(dragged.current, "highlighted");
-        dragged.current = null; draggingRef.current = false;
+        dragged.current = null;
       },
       mousedown: () => { if (!sigma.getCustomBBox()) sigma.setCustomBBox(sigma.getBBox()); },
     });
-  }, [reg, sigma, draggingRef]);
+  }, [reg, sigma]);
   return null;
 }
 
-// Apply / clear distinct node shapes whenever the setting or the loaded graph changes.
-function ShapeControl({ on, dataKey }: { on: boolean; dataKey: string }) {
-  const sigma = useSigma();
-  useEffect(() => { applyNodeShapes(sigma.getGraph(), on); sigma.refresh(); }, [on, dataKey, sigma]);
-  return null;
-}
-
-function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus, onFocus, showArrows, queryKeys, revealed, capHidden, onHover, onStats }: {
+function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus, onFocus, showArrows, queryKeys, revealed, capHidden, groupColors, onHover, onStats }: {
   filters: Filters; branchSel: Set<string | number>; prSel: Set<string | number>;
   botSet: Set<string>; myNames: Set<string>; dataKey: string;
   focus: number | null; onFocus: (id: number | null) => void; showArrows: boolean;
   queryKeys: Set<string> | null; revealed: Set<string> | null; capHidden: Set<string>;
+  groupColors: Map<string, string> | null;
   onHover: (info: { key: string; attrs: any; x: number; y: number } | null) => void;
   onStats: (v: { nodes: number; edges: number }) => void;
 }) {
@@ -179,8 +167,10 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
         if (revealed && !revealed.has(node)) return { ...data, hidden: true };  // intro: not yet revealed
         if (!match(node, data)) return { ...data, hidden: true };
         const mine = myNames.size && data.author && myNames.has(data.author);
+        // Cluster-by recolors nodes by their group; "mine"/AI tints still win so they pop.
+        const gcol = groupColors ? groupColors.get(node) : undefined;
         // AI-attributed commit nodes tint purple so agent activity pops on a focused repo.
-        const color = mine ? "#f0c000" : (data.nodeType === "commit" && data.aiAgent ? "#bc8cff" : data.color);
+        const color = mine ? "#f0c000" : (data.nodeType === "commit" && data.aiAgent ? "#bc8cff" : (gcol || data.color));
         const base = { ...data, color };
         if (hot) {
           if (node === hot) return { ...base, forceLabel: true, zIndex: 2, highlighted: true };
@@ -206,7 +196,7 @@ function Controller({ filters, branchSel, prSel, botSet, myNames, dataKey, focus
     let ve = 0;
     graph.forEachEdge((_e, _a, s, t) => { if (vis.has(s) && vis.has(t)) ve++; });
     onStats({ nodes: vis.size, edges: ve });
-  }, [hovered, filters, branchSel, prSel, myNames, botSet, showArrows, queryKeys, revealed, capHidden, sigma, setSettings, onStats]);
+  }, [hovered, filters, branchSel, prSel, myNames, botSet, showArrows, queryKeys, revealed, capHidden, groupColors, sigma, setSettings, onStats]);
   return null;
 }
 
@@ -278,7 +268,7 @@ function NodeTooltip({ info, t }: { info: { key: string; attrs: any; x: number; 
 
 export default function GraphView() {
   const t = useT();
-  const s = useSettings();  // live: clusterByAccount, nodeShapes, gravity, scaling
+  const s = useSettings();  // live: nodeShapes, gravity, scaling
   const [facets, setFacets] = useState<Facets | null>(null);
   const [data, setData] = useState<GraphData | null>(null);
   const [err, setErr] = useState<string | null>(null);
@@ -288,12 +278,13 @@ export default function GraphView() {
   const [onlyMine, setOnlyMine] = useState(() => getSettings().defaultOnlyMine);
   const [showArrows, setShowArrows] = useState(() => getSettings().showArrows);
   const [myNamesStr, setMyNamesStr] = useState(() => getSettings().myNames);
-  // Power-tool state: continuous layout, layout kind, performance cap, live counts.
+  // Power-tool state: continuous layout, layout kind, clustering, performance cap, live counts.
   const [animating, setAnimating] = useState(false);
   const [layout, setLayout] = useState<LayoutKind>("forceatlas2");
+  const [clusterBy, setClusterBy] = useState<ClusterBy>("none");
   const [nodeCap, setNodeCap] = useState(100000);
   const [vis, setVis] = useState({ nodes: 0, edges: 0 });
-  const draggingRef = useRef(false);
+  const [refit, setRefit] = useState(0);  // bump to re-fit the camera (new data, intro end, layout change)
   const containerRef = useRef<HTMLDivElement>(null);
 
   // server-side filters
@@ -382,7 +373,7 @@ export default function GraphView() {
     const iv = setInterval(() => {
       for (let k = 0; k < per && idx < order.length; k++, idx++) set.add(order[idx]);
       setRevealed(new Set(set));
-      if (idx >= order.length) { clearInterval(iv); setTimeout(() => setRevealed(null), 150); }
+      if (idx >= order.length) { clearInterval(iv); setTimeout(() => { setRevealed(null); setRefit((r) => r + 1); }, 150); }
     }, 1000 / fps);
     return () => clearInterval(iv);
   }, [data, focus]);
@@ -421,10 +412,14 @@ export default function GraphView() {
   };
   const applyQuery = (keys: string[] | null) => setQueryKeys(keys && keys.length ? new Set(keys) : null);
   const canvasKeys = useMemo(() => new Set((data?.nodes || []).map((n) => n.key)), [data]);
-  const clusters = useMemo(() => (data ? accountClusters(data) : []), [data]);
   const capHidden = useCapHidden(data, nodeCap);
+  const groupColors = useMemo(() => nodeGroupColors(data, clusterBy), [data, clusterBy]);
   const stats = computeStats({ nodes: data?.nodes.length || 0, edges: data?.edges.length || 0 }, vis);
   const onStats = useMemo(() => (v: { nodes: number; edges: number }) => setVis(v), []);
+  // Re-fit the camera once a freshly loaded / drilled-in graph has painted. `facets` is in the
+  // deps because it lands after the graph and re-triggers the Controller's setSettings (which
+  // re-frames Sigma) — so we must re-fit once it settles.
+  useEffect(() => { if (data) setRefit((r) => r + 1); }, [data, focus, facets]);
 
   const providerOpts = (facets?.providers || []).map((p) => ({ key: p, label: p }));
   const orgOpts = (facets?.organizations || []).filter((o) => !providerStr || o.provider === providerStr).map((o) => ({ key: o.name, label: o.name }));
@@ -504,6 +499,16 @@ export default function GraphView() {
           <option value="random">{t("Random")}</option>
         </select>
       </div>
+      <div>
+        <div className="field-label">{t("Cluster by")}</div>
+        <select style={box} value={clusterBy} onChange={(e) => setClusterBy(e.target.value as ClusterBy)}>
+          <option value="none">{t("None")}</option>
+          <option value="account">{t("Account")}</option>
+          <option value="org">{t("Organization")}</option>
+          <option value="workspace">{t("Workspace")}</option>
+          <option value="repo">{t("Repository")}</option>
+        </select>
+      </div>
     </>
   );
 
@@ -563,19 +568,19 @@ export default function GraphView() {
         <div ref={containerRef} style={{ flex: 1, minWidth: 0, overflow: "hidden", position: "relative" }}>
           {updating && <div style={{ position: "absolute", top: 10, right: 14, zIndex: 5, background: "var(--panel)", border: "1px solid var(--border)", borderRadius: 6, padding: "3px 10px", fontSize: 12, color: "var(--muted)" }}>{t("updating…")}</div>}
           {!data ? (
-            <div style={{ padding: 40 }}>{t("Loading graph…")}</div>
+            <div className="cg-loader"><div className="ring" /><div>{t("Loading graph…")}</div></div>
           ) : data.nodes.length === 0 ? (
             <div style={{ padding: 40 }}>{t("No nodes match these filters.")}</div>
           ) : (
             <ErrorBoundary>
               <SigmaContainer key={theme} style={{ height: "100%", background: "var(--bg)" }} settings={sigmaSettings}>
                 <LoadGraph data={data} focus={focus} />
-                <DragControl draggingRef={draggingRef} />
+                <DragControl />
                 <ShapeControl on={s.nodeShapes} dataKey={dataKey} />
-                <LayoutControl layout={layout} gravity={s.gravity} scaling={s.scaling} />
-                <AnimateControl running={animating} draggingRef={draggingRef} gravity={s.gravity} scaling={s.scaling} />
-                <Controller filters={filters} branchSel={branchSel} prSel={prSel} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} queryKeys={queryKeys} revealed={revealed} capHidden={capHidden} onHover={setHover} onStats={onStats} />
-                <ClusterLabels enabled={s.clusterByAccount} clusters={clusters} />
+                <LayoutControl layout={layout} gravity={s.gravity} scaling={s.scaling} onApplied={() => setRefit((r) => r + 1)} />
+                <AnimateControl running={animating} gravity={s.gravity} scaling={s.scaling} />
+                <FitControl trigger={refit} focus={focus} />
+                <Controller filters={filters} branchSel={branchSel} prSel={prSel} botSet={botSet} myNames={myNames} dataKey={dataKey} focus={focus} onFocus={setFocus} showArrows={showArrows} queryKeys={queryKeys} revealed={revealed} capHidden={capHidden} groupColors={groupColors} onHover={setHover} onStats={onStats} />
                 <ControlsContainer position="bottom-right">
                   <ZoomControl />
                   <FullScreenControl container={containerRef} />

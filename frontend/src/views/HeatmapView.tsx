@@ -70,11 +70,11 @@ export default function HeatmapView() {
       .then(setCounts).catch((e) => setErr(e.message));
   }, [qkey]);
 
-  // Year buttons: always at least the last 10 years, plus any older year with data.
+  // Year buttons: every year with data, oldest → newest, no cap (20-25y back if data goes there).
   const years = useMemo(() => {
     const now = new Date().getFullYear();
     const dataYears = Object.keys(counts || {}).map((d) => +d.slice(0, 4));
-    const min = Math.min(now - 9, ...(dataYears.length ? dataYears : [now]));
+    const min = Math.min(now, ...(dataYears.length ? dataYears : [now]));
     return Array.from({ length: now - min + 1 }, (_, i) => String(now - i));
   }, [counts]);
   const [year, setYear] = useState<string>("");
@@ -97,7 +97,9 @@ export default function HeatmapView() {
     chart.setOption({
       backgroundColor: "transparent",
       tooltip: { formatter: (p: any) => `${p.value[0]}: ${p.value[1]} commits — click to drill down` },
-      visualMap: { min: 0, max, show: false, inRange: { color: ["#161b22", "#0e4429", "#006d32", "#26a641", "#39d353"] } },
+      visualMap: { min: 0, max, show: false, inRange: { color: light
+        ? ["#ebedf0", "#9be9a8", "#40c463", "#30a14e", "#216e39"]   // GitHub light ramp (low end = light green, not black)
+        : ["#161b22", "#0e4429", "#006d32", "#26a641", "#39d353"] } },
       calendar: {
         range: activeYear, cellSize: [16, 16], top: 30, left: 40, right: 20,
         itemStyle: { color: light ? "#ebedf0" : "#161b22", borderColor: light ? "#fff" : "#0d1117", borderWidth: 2 },

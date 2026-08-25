@@ -48,10 +48,27 @@ export default function App() {
   return (
     <div style={{ height: "100vh", display: "flex", flexDirection: "column", background: "var(--bg)", color: "var(--fg)" }}>
       <header style={{ display: "flex", alignItems: "center", gap: 16, padding: "10px 20px", borderBottom: "1px solid var(--border)", flexWrap: "wrap" }}>
-        <strong style={{ fontSize: 18 }}>
-          <span style={{ color: "var(--accent)" }}>❯ commit-graph</span>
-          <span style={{ color: "var(--accent2)" }}>er</span>
-        </strong>
+        <button onClick={() => setTab(s.landingTab)} title={t("Home")}
+          style={{ display: "flex", alignItems: "center", gap: 9, background: "none", border: "none", cursor: "pointer", padding: 0, font: "inherit" }}>
+          {/* Same mark as the GitHub Pages site (docs/index.html brand + favicon). */}
+          <svg width="28" height="28" viewBox="0 0 64 64" fill="none" aria-hidden>
+            <defs><linearGradient id="cg-logo" x1="0" y1="0" x2="64" y2="64" gradientUnits="userSpaceOnUse">
+              <stop stopColor="#58a6ff" /><stop offset="1" stopColor="#8957e5" />
+            </linearGradient></defs>
+            <g stroke="url(#cg-logo)" strokeWidth="2.4" opacity=".85">
+              <line x1="32" y1="32" x2="16" y2="16" /><line x1="32" y1="32" x2="48" y2="18" />
+              <line x1="32" y1="32" x2="18" y2="48" /><line x1="32" y1="32" x2="49" y2="46" />
+            </g>
+            <g fill="url(#cg-logo)">
+              <circle cx="32" cy="32" r="7" /><circle cx="16" cy="16" r="4.5" /><circle cx="48" cy="18" r="4.5" />
+              <circle cx="18" cy="48" r="4.5" /><circle cx="49" cy="46" r="4.5" />
+            </g>
+          </svg>
+          <strong style={{ fontSize: 18 }}>
+            commit-graph
+            <span style={{ background: "linear-gradient(90deg,#58a6ff,#8957e5)", WebkitBackgroundClip: "text", backgroundClip: "text", color: "transparent" }}>er</span>
+          </strong>
+        </button>
         <nav style={{ display: "flex", gap: 8, flexWrap: "wrap" }}>
           {TABS.map(([id, label]) => (
             <button key={id} onClick={() => setTab(id)}

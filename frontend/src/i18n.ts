@@ -17,6 +17,7 @@ const TR: Record<string, string> = {
   "Light": "Açık",
   "Loading…": "Yükleniyor…",
   "Toggle theme": "Temayı değiştir",
+  "Home": "Ana sayfa",
   "Language": "Dil",
 
   // ---- filter dimensions (shared across pages) ----
@@ -77,6 +78,8 @@ const TR: Record<string, string> = {
   "Relations": "İlişkiler",
   "Density": "Yoğunluk",
   "Avg degree": "Ort. derece",
+  "Cluster by": "Kümeleme",
+  "None": "Yok",
   "Cluster by account": "Hesaba göre kümele",
   "Distinct node shapes": "Ayrı düğüm şekilleri",
   "Overlay a floating label at each account's cluster so subtrees are easy to tell apart.": "Alt ağaçları ayırt etmek için her hesabın kümesine yüzen bir etiket ekler.",

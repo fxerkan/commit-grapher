@@ -334,10 +334,14 @@
   <p class="lead">Python ≥ 3.13 backend, Vite/React frontend. Dağıtacak bir şey yok. Tek bir script her şeyi halleder.</p>
   <pre><code># klonla, sonra tek komut — venv + kurulum + derleme + :8000'de sun
 git clone https://github.com/fxerkan/commit-grapher &amp;&amp; cd commit-grapher
-./start.sh                # → http://localhost:8000
 
-# geliştirirken hot reload mı? backend :8000 + Vite :5173 birlikte
-./start.sh dev</code></pre>
+# macOS / Linux
+./start.sh                # → http://localhost:8000
+./start.sh dev            # hot reload: backend :8000 + Vite :5173
+
+# Windows (PowerShell ya da start.bat'a çift tıkla)
+.\start.ps1               # → http://localhost:8000
+.\start.ps1 dev           # hot reload: backend :8000 + Vite :5173</code></pre>
 </div></section>
 
 <section id="docs" style="padding-top:0"><div class="wrap">
