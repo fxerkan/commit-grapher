@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<urlset xmlns="http://www.sitemaps.org/schemas/sitemap/0.9"
+        xmlns:xhtml="http://www.w3.org/1999/xhtml">
+  <url>
+    <loc>https://fxerkan.github.io/commit-grapher/</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://fxerkan.github.io/commit-grapher/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://fxerkan.github.io/commit-grapher/index.tr.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://fxerkan.github.io/commit-grapher/"/>
+  </url>
+  <url>
+    <loc>https://fxerkan.github.io/commit-grapher/index.tr.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://fxerkan.github.io/commit-grapher/"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://fxerkan.github.io/commit-grapher/index.tr.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://fxerkan.github.io/commit-grapher/"/>
+  </url>
+  <url>
+    <loc>https://fxerkan.github.io/commit-grapher/docs.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://fxerkan.github.io/commit-grapher/docs.html"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://fxerkan.github.io/commit-grapher/docs.tr.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://fxerkan.github.io/commit-grapher/docs.html"/>
+  </url>
+  <url>
+    <loc>https://fxerkan.github.io/commit-grapher/docs.tr.html</loc>
+    <xhtml:link rel="alternate" hreflang="en" href="https://fxerkan.github.io/commit-grapher/docs.html"/>
+    <xhtml:link rel="alternate" hreflang="tr" href="https://fxerkan.github.io/commit-grapher/docs.tr.html"/>
+    <xhtml:link rel="alternate" hreflang="x-default" href="https://fxerkan.github.io/commit-grapher/docs.html"/>
+  </url>
+</urlset>

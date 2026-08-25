@@ -1,5 +1,7 @@
 # commit-graph`er`
 
+<sub>🌐 **English** · [Türkçe](README.tr.md)</sub>
+
 > **Your git history, deanonymized.** commit-grapher rounds up every commit, branch, and
 > pull request from **all** your version-control accounts, drags them into one gloriously
 > nerdy dashboard, and gently snitches on your 2 AM coding habits — all **without ever
@@ -75,25 +77,33 @@ and export/import your whole dataset as JSON.
 
 ## Run it
 
-Backend (Python ≥ 3.13):
+One command — creates the venv, installs everything, builds the frontend, and serves it all on `:8000`:
 
 ```bash
+./start.sh                # → http://localhost:8000
+```
+
+Prefer hot reload while hacking? Runs the backend and the Vite dev server together:
+
+```bash
+./start.sh dev            # backend :8000 · frontend :5173
+```
+
+<details>
+<summary>…or the manual steps</summary>
+
+```bash
+# backend (Python ≥ 3.13)
 python -m venv .venv && source .venv/bin/activate
 pip install -e backend
 uvicorn app.main:app --app-dir backend --reload    # http://localhost:8000
-```
 
-Frontend — dev (hot reload, proxies `/api` to `:8000`):
-
-```bash
+# frontend — dev (hot reload, proxies /api to :8000)
 cd frontend && npm install && npm run dev           # http://localhost:5173
+# ...or build once and let the backend serve it on :8000
+cd frontend && npm run build
 ```
-
-…or build once and let the backend serve everything on `:8000`:
-
-```bash
-cd frontend && npm run build                        # then just run uvicorn
-```
+</details>
 
 ## Connect an account
 

@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="tr">
 <head>
 <meta charset="utf-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -13,21 +13,22 @@
   gtag('config', 'G-JGJZY9WSCS');
 </script>
 
-<title>commit-grapher — Docs & connection guides for GitHub, Azure DevOps, GitLab & more</title>
-<meta name="description" content="Step-by-step guides for connecting GitHub, Azure DevOps, GitLab, Bitbucket, Gitea, Codeberg and Jira to commit-grapher — with the exact token scopes and the gotchas most people hit." />
-<meta name="keywords" content="commit-grapher docs, github personal access token scopes, azure devops PAT, gitlab read_api token, bitbucket api token, gitea codeberg token, jira api token, connect git provider, developer tool setup" />
+<title>commit-grapher — Dokümanlar & bağlantı kılavuzları (GitHub, Azure DevOps, GitLab ve daha fazlası)</title>
+<meta name="description" content="GitHub, Azure DevOps, GitLab, Bitbucket, Gitea, Codeberg ve Jira'yı commit-grapher'a bağlamak için adım adım kılavuzlar — tam token yetkileri ve çoğu kişinin takıldığı tuzaklarla." />
+<meta name="keywords" content="commit-grapher dokümanlar, github personal access token yetkileri, azure devops PAT, gitlab read_api token, bitbucket api token, gitea codeberg token, jira api token, git sağlayıcı bağlama, geliştirici aracı kurulumu" />
 <meta name="author" content="FXerkan" />
 <meta name="robots" content="index, follow" />
-<link rel="canonical" href="https://fxerkan.github.io/commit-grapher/docs.html" />
+<link rel="canonical" href="https://fxerkan.github.io/commit-grapher/docs.tr.html" />
 <link rel="alternate" hreflang="en" href="https://fxerkan.github.io/commit-grapher/docs.html" />
 <link rel="alternate" hreflang="tr" href="https://fxerkan.github.io/commit-grapher/docs.tr.html" />
 <link rel="alternate" hreflang="x-default" href="https://fxerkan.github.io/commit-grapher/docs.html" />
 <meta name="theme-color" content="#0a0d12" />
-<meta property="og:title" content="commit-grapher — Docs & connection guides" />
-<meta property="og:description" content="Connect GitHub, Azure DevOps, GitLab, Bitbucket, Gitea, Codeberg and Jira — exact token scopes and the gotchas." />
+<meta property="og:title" content="commit-grapher — Dokümanlar & bağlantı kılavuzları" />
+<meta property="og:description" content="GitHub, Azure DevOps, GitLab, Bitbucket, Gitea, Codeberg ve Jira'yı bağla — tam token yetkileri ve tuzaklar." />
 <meta property="og:image" content="https://fxerkan.github.io/commit-grapher/og-image.png" />
-<meta property="og:url" content="https://fxerkan.github.io/commit-grapher/docs.html" />
+<meta property="og:url" content="https://fxerkan.github.io/commit-grapher/docs.tr.html" />
 <meta property="og:type" content="website" />
+<meta property="og:locale" content="tr_TR" />
 <meta name="twitter:card" content="summary_large_image" />
 <link rel="icon" href="favicon.svg" type="image/svg+xml" />
 <style>
@@ -89,24 +90,24 @@
     <span>commit-graph<span class="grad">er</span></span>
   </a>
   <nav class="nav-links">
-    <a href="index.html">Home</a><a href="index.html#tour">Tour</a><a href="index.html#run">Run it</a>
-    <a href="docs.tr.html" title="Türkçe" style="font-weight:700">TR</a>
+    <a href="index.tr.html">Ana sayfa</a><a href="index.tr.html#tour">Tur</a><a href="index.tr.html#run">Çalıştır</a>
+    <a href="docs.html" title="English" style="font-weight:700">EN</a>
     <a class="btn-ghost" href="https://github.com/fxerkan/commit-grapher">★ GitHub</a>
   </nav>
 </div></header>
 
 <div class="wrap hero-d">
-  <h1>Connect your accounts</h1>
-  <p>Two-minute guides with the exact token scopes — and the gotchas most people hit.
-  commit-grapher reads <b>metadata only</b>; your tokens stay in your OS keychain.</p>
+  <h1>Hesaplarını bağla</h1>
+  <p>Tam token yetkileriyle iki dakikalık kılavuzlar — ve çoğu kişinin takıldığı tuzaklar.
+  commit-grapher <b>yalnızca meta veri</b> okur; token'ların işletim sisteminin anahtarlığında kalır.</p>
 </div>
 
 <div class="wrap shell">
   <aside class="toc">
-    <div class="t">Providers</div>
+    <div class="t">Sağlayıcılar</div>
     <nav id="toc"></nav>
   </aside>
-  <main id="content"><div class="loading">Loading guides…</div></main>
+  <main id="content"><div class="loading">Kılavuzlar yükleniyor…</div></main>
 </div>
 
 <footer><div class="wrap foot">
@@ -114,9 +115,9 @@
   <span>·</span>
   <a href="https://github.com/fxerkan/commit-grapher">v0.1.0</a>
   <span>·</span>
-  <span>by <a href="https://fxerkan.com">FXerkan</a></span>
+  <span><a href="https://fxerkan.com">FXerkan</a> tarafından</span>
   <span>·</span>
-  <span style="color:var(--muted)">Code more, worry less</span>
+  <span style="color:var(--muted)">Daha çok kodla, daha az dertlen</span>
   <a href="https://github.com/fxerkan/commit-grapher" title="GitHub" aria-label="GitHub" style="margin-left:6px;display:inline-flex;color:var(--muted)">
     <svg height="16" width="16" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27.68 0 1.36.09 2 .27 1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0016 8c0-4.42-3.58-8-8-8z"/></svg>
   </a>
@@ -137,9 +138,9 @@
     const sec = document.createElement("section");
     sec.id = file; sec.className = "guide";
     try {
-      const md = await fetch(file + ".md").then(r => r.ok ? r.text() : Promise.reject());
+      const md = await fetch(file + ".tr.md").then(r => r.ok ? r.text() : Promise.reject());
       sec.innerHTML = marked.parse(md);
-    } catch { sec.innerHTML = `<h1>${title}</h1><p class="loading">Guide unavailable — see it on <a href="https://github.com/fxerkan/commit-grapher/blob/main/docs/${file}.md">GitHub</a>.</p>`; }
+    } catch { sec.innerHTML = `<h1>${title}</h1><p class="loading">Kılavuz kullanılamıyor — <a href="https://github.com/fxerkan/commit-grapher/blob/main/docs/${file}.tr.md">GitHub</a> üzerinde gör.</p>`; }
     content.appendChild(sec);
   }
   // scroll-spy: highlight the TOC entry for the section in view

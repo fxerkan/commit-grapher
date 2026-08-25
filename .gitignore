@@ -6,3 +6,4 @@ backend/cache.db
 node_modules/
 frontend/dist/
 .vscode/
+marketing/
