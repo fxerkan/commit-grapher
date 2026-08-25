@@ -1,6 +1,6 @@
 [project]
 name = "commit-grapher"
-version = "0.1.0"
+version = "0.3.1"
 description = "Multi-provider commit/contribution graph aggregator (metadata only)"
 requires-python = ">=3.13"
 dependencies = [

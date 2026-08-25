@@ -192,6 +192,7 @@ const TR: Record<string, string> = {
 
   // ---- page headers ----
   "people · click an avatar to drill in": "kişi · detaya inmek için bir avatara tıkla",
+  "Pick an account, organization, workspace or repository on the left — scoped to one, the collaboration graph reads far clearer than across everyone.": "Soldan bir hesap, organizasyon, çalışma alanı veya depo seç — birine daraltıldığında işbirliği grafiği herkesin arasından çok daha anlaşılır görünür.",
 
   // ---- Stats page (section + fun-fact titles) ----
   "KPI Cards": "Temel Göstergeler",

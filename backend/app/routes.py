@@ -304,22 +304,26 @@ def rename_account(account_id: int, body: RenameIn):
 @router.get("/contributors")
 def get_contributors(providers: str | None = None, repo_ids: str | None = None,
                      start: str | None = None, end: str | None = None,
-                     languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None):
+                     languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None,
+                     identities: str | None = None):
     plist = [p for p in (providers.split(",") if providers else []) if p]
     rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
     return charts.contributors(plist or None, rids, start, end,
-                               _pipe(languages) or None, _pipe(libraries) or None, _pipe(ai_agents) or None)
+                               _pipe(languages) or None, _pipe(libraries) or None, _pipe(ai_agents) or None,
+                               identities=_pipe(identities) or None)
 
 
 @router.get("/contributors/detail")
 def get_contributor_detail(login: str | None = None, repo_id: int | None = None,
                            providers: str | None = None, repo_ids: str | None = None,
                            start: str | None = None, end: str | None = None,
-                           languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None):
+                           languages: str | None = None, libraries: str | None = None, ai_agents: str | None = None,
+                           identities: str | None = None):
     plist = [p for p in (providers.split(",") if providers else []) if p]
     rids = [int(x) for x in repo_ids.split(",") if x] if repo_ids else None
     return charts.contributor_detail(login, repo_id, plist or None, rids, start, end,
-                                     _pipe(languages) or None, _pipe(libraries) or None, _pipe(ai_agents) or None)
+                                     _pipe(languages) or None, _pipe(libraries) or None, _pipe(ai_agents) or None,
+                                     identities=_pipe(identities) or None)
 
 
 @router.get("/achievements")

@@ -22,11 +22,13 @@ export interface Filters {
   projects?: string[]; organizations?: string[]; account_ids?: number[];
   start?: string; end?: string;
   languages?: string[]; libraries?: string[]; ai_agents?: string[];
+  identities?: string[];  // merge these names/emails/logins into one contributor node
 }
 const dimParams = (p: URLSearchParams, q?: Filters) => {
   if (q?.languages?.length) p.set("languages", q.languages.join("||"));
   if (q?.libraries?.length) p.set("libraries", q.libraries.join("||"));
   if (q?.ai_agents?.length) p.set("ai_agents", q.ai_agents.join("||"));
+  if (q?.identities?.length) p.set("identities", q.identities.join("||"));
 };
 
 export const api = {

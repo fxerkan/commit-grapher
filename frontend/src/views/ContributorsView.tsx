@@ -9,6 +9,7 @@ import { api, ContributorGraph, ContributorDetail, ContributorNode, Facets } fro
 import { Opt } from "../components/MultiSelect";
 import FilterPanel, { FilterDim } from "../components/FilterPanel";
 import LanguagesBar from "../components/LanguagesBar";
+import { useSettings } from "../settings";
 import { useT } from "../i18n";
 
 const S = (arr: Iterable<any>) => new Set(arr);
@@ -137,16 +138,19 @@ export default function ContributorsView() {
   ), [facets, providers, orgs, projects, accounts, repos, languages, libraries]);
   const repoIds = repoDimActive ? (effRepos.length ? effRepos.map((r) => r.id) : [-1]) : undefined;
   const aiList = aiAgents.size ? [...aiAgents].map(String) : undefined;
-  const qkey = JSON.stringify([repoIds, [...aiAgents].sort(), start, end]);
+  // "My names / emails" (Settings) collapse into one node so your own aliases merge, not split.
+  const s = useSettings();
+  const identities = useMemo(() => s.myNames.split(",").map((x) => x.trim()).filter(Boolean), [s.myNames]);
+  const qkey = JSON.stringify([repoIds, [...aiAgents].sort(), start, end, identities]);
 
   useEffect(() => {
-    api.contributors({ repo_ids: repoIds, ai_agents: aiList, start: start || undefined, end: end || undefined })
+    api.contributors({ repo_ids: repoIds, ai_agents: aiList, start: start || undefined, end: end || undefined, identities })
       .then((g) => { setGraph(g); setErr(null); }).catch((e) => setErr(e.message));
   }, [qkey]);
 
   useEffect(() => {
     setDetail(null);
-    api.contributorDetail({ login: focus || undefined, repo_ids: repoIds, ai_agents: aiList, start: start || undefined, end: end || undefined })
+    api.contributorDetail({ login: focus || undefined, repo_ids: repoIds, ai_agents: aiList, start: start || undefined, end: end || undefined, identities })
       .then(setDetail).catch(() => setDetail(null));
   }, [focus, qkey]);
 
@@ -227,6 +231,12 @@ export default function ContributorsView() {
           <span style={{ color: "var(--muted)", fontSize: 13 }}>{graph?.list.length ?? "…"} {t("people · click an avatar to drill in")}</span>
           {focus && <button className="btn" style={{ marginLeft: "auto" }} onClick={() => setFocus(null)}>← all contributors</button>}
         </div>
+
+        {!repoDimActive && (
+          <div style={{ marginBottom: 10, padding: "8px 12px", borderRadius: 8, border: "1px solid var(--border)", background: "var(--panel)", color: "var(--muted)", fontSize: 13 }}>
+            💡 {t("Pick an account, organization, workspace or repository on the left — scoped to one, the collaboration graph reads far clearer than across everyone.")}
+          </div>
+        )}
 
         <div className="panel" style={{ height: 380, minHeight: 380, flexShrink: 0, padding: 0, overflow: "hidden", position: "relative" }}>
           {!graph ? <div style={{ padding: 40, color: "var(--muted)" }}>Loading…</div>

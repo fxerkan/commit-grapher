@@ -304,6 +304,21 @@ def stats(providers: list[str] | None = None, repo_ids: list[int] | None = None,
 _KEY = "COALESCE(c.author_login, c.author)"
 
 
+def _key_expr(identities: list[str] | None) -> str:
+    """Contributor identity key. Given `identities` (one person's known names / emails /
+    logins from Settings → "My names / emails"), collapse every commit matching any of them
+    into a single canonical node ('@me') so those aliases merge into ONE contributor instead
+    of N separate avatars. Without identities, key by login-or-name as before."""
+    al = [a.strip().lower() for a in (identities or []) if a and a.strip()]
+    if not al:
+        return _KEY
+    # ponytail: inline single-quote-escaped literals (values are the user's OWN settings, not
+    # attacker input) so the key drops into every existing f-string with zero arg reordering.
+    lit = ",".join("'" + a.replace("'", "''") + "'" for a in al)
+    return (f"CASE WHEN lower(c.author) IN ({lit}) OR lower(c.author_login) IN ({lit}) "
+            f"OR lower(c.author_email) IN ({lit}) THEN '@me' ELSE {_KEY} END")
+
+
 def _contrib_adddel(conn, repo_ids: list[int]) -> dict:
     """{login: [additions, deletions]} summed from repos.contrib_stats over the given repos."""
     out: dict[str, list[int]] = defaultdict(lambda: [0, 0])
@@ -322,11 +337,12 @@ def _contrib_adddel(conn, repo_ids: list[int]) -> dict:
     return out
 
 
-def _contrib_list(conn, cw: str, args: list, cap: int = 200) -> list[dict]:
+def _contrib_list(conn, cw: str, args: list, cap: int = 200, identities=None) -> list[dict]:
     """Ranked contributors over a commit WHERE-fragment: commits, repos, avatar, +/-."""
-    j = f"FROM commits c JOIN repos r ON c.repo_id=r.id WHERE {cw} AND {_KEY} IS NOT NULL"
+    KEY = _key_expr(identities)
+    j = f"FROM commits c JOIN repos r ON c.repo_id=r.id WHERE {cw} AND {KEY} IS NOT NULL"
     rows = conn.execute(
-        f"SELECT {_KEY} k, MAX(c.author) name, MAX(c.author_avatar) avatar, "
+        f"SELECT {KEY} k, MAX(c.author) name, MAX(c.author_avatar) avatar, "
         f"COUNT(*) commits, COUNT(DISTINCT c.repo_id) repos {j} GROUP BY k ORDER BY commits DESC LIMIT ?",
         (*args, cap)).fetchall()
     scoped = [r["rid"] for r in conn.execute(f"SELECT DISTINCT c.repo_id rid {j}", args)]
@@ -337,18 +353,19 @@ def _contrib_list(conn, cw: str, args: list, cap: int = 200) -> list[dict]:
 
 
 def contributors(providers=None, repo_ids=None, start=None, end=None,
-                 languages=None, libraries=None, ai_agents=None,
+                 languages=None, libraries=None, ai_agents=None, identities=None,
                  node_cap: int = 60, list_cap: int = 200) -> dict:
     """Avatar-node network: nodes = contributors, edges = sharing a repo (collab)."""
     conn = db.connect()
+    KEY = _key_expr(identities)
     cw, args = _commit_where(providers, repo_ids, None, start, end, languages, libraries, ai_agents)
-    lst = _contrib_list(conn, cw, args, cap=list_cap)
+    lst = _contrib_list(conn, cw, args, cap=list_cap, identities=identities)
     top = lst[:node_cap]
     top_set = {d["login"] for d in top}
     # Collaboration edges: two top contributors who both committed to the same repo.
-    j = f"FROM commits c JOIN repos r ON c.repo_id=r.id WHERE {cw} AND {_KEY} IS NOT NULL"
+    j = f"FROM commits c JOIN repos r ON c.repo_id=r.id WHERE {cw} AND {KEY} IS NOT NULL"
     repo_members: dict[int, set] = defaultdict(set)
-    for r in conn.execute(f"SELECT DISTINCT c.repo_id rid, {_KEY} k {j}", args):
+    for r in conn.execute(f"SELECT DISTINCT c.repo_id rid, {KEY} k {j}", args):
         if r["k"] in top_set:
             repo_members[r["rid"]].add(r["k"])
     pair: Counter = Counter()
@@ -369,19 +386,21 @@ def contributors(providers=None, repo_ids=None, start=None, end=None,
 
 
 def contributor_detail(login: str | None = None, repo_id: int | None = None, providers=None,
-                       repo_ids=None, start=None, end=None, languages=None, libraries=None, ai_agents=None) -> dict:
+                       repo_ids=None, start=None, end=None, languages=None, libraries=None,
+                       ai_agents=None, identities=None) -> dict:
     """GitHub-style detail for a focused contributor (login) or repo (repo_id): weekly
     commits-over-time, ranked contributor cards w/ per-card weekly sparkline, top repos,
     language mix, and a Pulse overview."""
     conn = db.connect()
+    KEY = _key_expr(identities)
     rids = [repo_id] if repo_id else repo_ids
     cw, args = _commit_where(providers, rids, None, start, end, languages, libraries, ai_agents)
-    j = f"FROM commits c JOIN repos r ON c.repo_id=r.id WHERE {cw} AND {_KEY} IS NOT NULL"
+    j = f"FROM commits c JOIN repos r ON c.repo_id=r.id WHERE {cw} AND {KEY} IS NOT NULL"
 
     # Weekly buckets per contributor (one pass) — %Y-%W is Monday-based week, fine for sparklines.
     per: dict[str, dict] = defaultdict(dict)
     for r in conn.execute(
-            f"SELECT {_KEY} k, strftime('%Y-%W', substr(c.committed_at,1,10)) w, COUNT(*) n {j} "
+            f"SELECT {KEY} k, strftime('%Y-%W', substr(c.committed_at,1,10)) w, COUNT(*) n {j} "
             "GROUP BY k, w", args):
         if r["w"]:
             per[r["k"]][r["w"]] = r["n"]
@@ -390,7 +409,7 @@ def contributor_detail(login: str | None = None, repo_id: int | None = None, pro
     def series(k):
         return [{"week": w, "commits": per[k].get(w, 0)} for w in weeks]
 
-    clist = _contrib_list(conn, cw, args, cap=60)
+    clist = _contrib_list(conn, cw, args, cap=60, identities=identities)
     for d in clist:
         d["weekly"] = series(d["login"])
     rank_of = {d["login"]: i + 1 for i, d in enumerate(clist)}
@@ -400,7 +419,7 @@ def contributor_detail(login: str | None = None, repo_id: int | None = None, pro
     if login:
         agg = per.get(login, {})
         weekly = [{"week": w, "commits": agg.get(w, 0)} for w in weeks]
-        fcw = cw + f" AND {_KEY}=?"; fargs = [*args, login]
+        fcw = cw + f" AND {KEY}=?"; fargs = [*args, login]
     else:
         total = Counter()
         for m in per.values():
